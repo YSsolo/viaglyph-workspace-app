@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ViaGLYPH — 新機能アイデア集</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#f0f4ff;--card:#fff;--primary:#6366f1;--primary-light:#818cf8;
+  --text:#0f172a;--text-s:#64748b;--border:#e2e8f0;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#3b82f6;
+}
+body{font-family:'Noto Sans JP','Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.hero{text-align:center;padding:60px 20px 40px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#a78bfa 100%);color:#fff}
+.hero h1{font-size:2.2rem;font-weight:800;margin-bottom:8px}
+.hero p{font-size:1rem;opacity:.85;max-width:600px;margin:0 auto}
+.ideas{max-width:1100px;margin:0 auto;padding:32px 20px}
+.idea-card{background:var(--card);border-radius:16px;padding:28px;margin-bottom:24px;border:1px solid var(--border);transition:all .2s}
+.idea-card:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.08)}
+.idea-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.idea-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0}
+.idea-title{font-size:1.15rem;font-weight:700}
+.idea-subtitle{font-size:.8rem;color:var(--text-s)}
+.idea-body{font-size:.9rem;color:var(--text-s);margin-bottom:16px}
+.idea-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tag{font-size:.7rem;padding:3px 10px;border-radius:20px;font-weight:500}
+.tag-effort{background:#fef3c7;color:#92400e}
+.tag-impact{background:#dcfce7;color:#166534}
+.tag-type{background:#ede9fe;color:#5b21b6}
+
+/* ─── MOCKUP SECTIONS ─── */
+.mockup{background:#f8fafc;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.mockup-header{background:#fff;padding:10px 16px;border-bottom:1px solid var(--border);font-size:.75rem;color:var(--text-s);display:flex;align-items:center;gap:8px}
+.mockup-dot{width:8px;height:8px;border-radius:50%}
+.mockup-body{padding:20px}
+
+/* 1. Standup */
+.standup-q{margin-bottom:14px}
+.standup-q label{font-size:.8rem;font-weight:600;display:block;margin-bottom:4px}
+.standup-q textarea,.standup-q input{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.85rem;font-family:inherit;resize:none}
+.standup-submit{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:.85rem;font-weight:600;cursor:pointer;margin-top:8px}
+.standup-history{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
+.standup-entry{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.standup-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0}
+.standup-content{flex:1;font-size:.82rem}
+.standup-name{font-weight:600;font-size:.78rem}
+.standup-time{font-size:.7rem;color:var(--text-s)}
+
+/* 2. Mood */
+.mood-row{display:flex;gap:8px;justify-content:center;margin:12px 0}
+.mood-btn{font-size:1.8rem;border:2px solid transparent;border-radius:12px;padding:8px 14px;cursor:pointer;background:none;transition:all .2s}
+.mood-btn:hover,.mood-btn.selected{border-color:var(--primary);background:rgba(99,102,241,.08);transform:scale(1.15)}
+.mood-chart{display:flex;align-items:flex-end;gap:4px;height:60px;margin-top:16px;justify-content:center}
+.mood-bar{width:24px;border-radius:4px 4px 0 0;transition:height .3s}
+.mood-label{text-align:center;font-size:.65rem;color:var(--text-s);margin-top:4px}
+.mood-team{display:flex;gap:16px;justify-content:center;margin-top:16px}
+.mood-member{text-align:center;font-size:.75rem}
+.mood-member .emoji{font-size:1.5rem}
+
+/* 3. Retro */
+.retro-cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:600px){.retro-cols{grid-template-columns:1fr}}
+.retro-col{border-radius:10px;padding:12px;min-height:120px}
+.retro-col-title{font-size:.8rem;font-weight:700;margin-bottom:8px}
+.retro-good{background:#dcfce7}.retro-bad{background:#fee2e2}.retro-try{background:#dbeafe}
+.retro-item{font-size:.78rem;padding:6px 8px;background:rgba(255,255,255,.7);border-radius:6px;margin-bottom:4px}
+.retro-add{font-size:.75rem;color:var(--text-s);cursor:pointer;padding:4px;text-align:center;border:1px dashed var(--border);border-radius:6px;margin-top:6px}
+
+/* 4. Sprint */
+.sprint-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.sprint-progress{flex:1;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden}
+.sprint-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--primary),var(--primary-light))}
+.sprint-stat{font-size:.75rem;color:var(--text-s)}
+.sprint-lanes{display:flex;gap:8px;overflow-x:auto}
+.sprint-lane{min-width:140px;flex:1}
+.sprint-lane-title{font-size:.72rem;font-weight:700;padding:6px;text-align:center;border-radius:8px 8px 0 0}
+.sprint-lane-todo .sprint-lane-title{background:#f1f5f9}
+.sprint-lane-wip .sprint-lane-title{background:#fef3c7}
+.sprint-lane-done .sprint-lane-title{background:#dcfce7}
+.sprint-task{font-size:.72rem;padding:6px 8px;background:#fff;border:1px solid var(--border);border-radius:6px;margin:4px}
+
+/* 5. Time */
+.time-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px}
+.time-card{text-align:center;padding:16px;border-radius:10px;background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(139,92,246,.04))}
+.time-value{font-size:1.5rem;font-weight:800;color:var(--primary)}
+.time-label{font-size:.7rem;color:var(--text-s);margin-top:2px}
+.time-chart{height:80px;display:flex;align-items:flex-end;gap:3px;justify-content:center}
+.time-bar{width:20px;border-radius:3px 3px 0 0;background:var(--primary);opacity:.7}
+.time-weekday{text-align:center;font-size:.6rem;color:var(--text-s);margin-top:2px}
+
+/* Priority badge */
+.priority-badge{display:inline-flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:700;width:14px;height:14px;border-radius:3px;color:#fff;margin-right:4px}
+.p-high{background:var(--red)}.p-mid{background:var(--amber)}.p-low{background:var(--blue)}
+
+/* Footer */
+.footer{text-align:center;padding:40px 20px;color:var(--text-s);font-size:.8rem}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>🧠 ViaGLYPH 新機能アイデア</h1>
+  <p>競合リサーチとブレストの結果、以下5つの機能を提案します。<br>各モックアップは実装イメージです。</p>
+</div>
+
+<div class="ideas">
+
+<!-- IDEA 1: Async Standup -->
+<div class="idea-card">
+  <div class="idea-header">
+    <div class="idea-icon" style="background:#ede9fe">💬</div>
+    <div>
+      <div class="idea-title">① 非同期スタンドアップ</div>
+      <div class="idea-subtitle">毎朝のチェックインを非同期で — MTG不要</div>
+    </div>
+  </div>
+  <div class="idea-body">
+    Geekbot / DailyBot に着想。毎日3つの質問に回答するだけでチーム全員の状況が可視化される。
+    看板タスクと連動し、「今日やること」は自動でWIPタスクから提案。
+  </div>
+  <div class="idea-tags">
+    <span class="tag tag-type">📱 モバイル最適</span>
+    <span class="tag tag-effort">⏱ 実装: 中</span>
+    <span class="tag tag-impact">🚀 インパクト: 高</span>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header"><div class="mockup-dot" style="background:#22c55e"></div> 今日のスタンドアップ — 5/5（月）</div>
+    <div class="mockup-body">
+      <div class="standup-q">
+        <label>📌 昨日やったこと</label>
+        <textarea rows="2" placeholder="解法グラフの全分野整備を完了。PRレビュー2件。">解法グラフの全分野整備を完了。PRレビュー2件。</textarea>
+      </div>
+      <div class="standup-q">
+        <label>🎯 今日やること</label>
+        <textarea rows="2" placeholder="自動提案: スプリント2 開発着手, QLYPH フロントエンド完成">スプリント2 開発着手, QLYPH フロントエンド完成</textarea>
+      </div>
+      <div class="standup-q">
+        <label>🚧 ブロッカー（困ってること）</label>
+        <textarea rows="1" placeholder="特になし"></textarea>
+      </div>
+      <button class="standup-submit">送信 ✓</button>
+
+      <div class="standup-history">
+        <div style="font-size:.8rem;font-weight:600;margin-bottom:8px">チームの回答</div>
+        <div class="standup-entry">
+          <div class="standup-avatar" style="background:#dcfce7">🌿</div>
+          <div class="standup-content">
+            <div class="standup-name">山口 <span class="standup-time">9:12</span></div>
+            <div>📌 解法グラフ整備完了、PRレビュー2件</div>
+            <div>🎯 スプリント2着手、フロントエンド完成</div>
+          </div>
+        </div>
+        <div class="standup-entry">
+          <div class="standup-avatar" style="background:#dbeafe">💎</div>
+          <div class="standup-content">
+            <div class="standup-name">村山 <span class="standup-time">8:45</span></div>
+            <div>📌 認証バックエンド設計完了</div>
+            <div>🎯 Rails 8実装開始</div>
+            <div>🚧 API仕様の確認待ち</div>
+          </div>
+        </div>
+        <div class="standup-entry" style="opacity:.5">
+          <div class="standup-avatar" style="background:#fef3c7">🔥</div>
+          <div class="standup-content">
+            <div class="standup-name">市川 <span class="standup-time">未回答</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IDEA 2: Team Mood -->
+<div class="idea-card">
+  <div class="idea-header">
+    <div class="idea-icon" style="background:#fef3c7">😊</div>
+    <div>
+      <div class="idea-title">② チームムードトラッカー</div>
+      <div class="idea-subtitle">チームの健康状態を可視化 — バーンアウト予防</div>
+    </div>
+  </div>
+  <div class="idea-body">
+    Range / DailyBot のウェルネス機能に着想。毎日の気分を5段階で記録し、チーム全体のムード推移をグラフ化。
+    低下傾向を検出したら自動アラート。スタートアップのバーンアウトを未然に防ぐ。
+  </div>
+  <div class="idea-tags">
+    <span class="tag tag-type">❤️ ウェルネス</span>
+    <span class="tag tag-effort">⏱ 実装: 低</span>
+    <span class="tag tag-impact">🚀 インパクト: 中</span>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header"><div class="mockup-dot" style="background:#f59e0b"></div> 今日の気分は？</div>
+    <div class="mockup-body">
+      <div class="mood-row">
+        <button class="mood-btn" onclick="this.classList.toggle('selected')">😫</button>
+        <button class="mood-btn" onclick="this.classList.toggle('selected')">😕</button>
+        <button class="mood-btn selected" onclick="this.classList.toggle('selected')">😐</button>
+        <button class="mood-btn" onclick="this.classList.toggle('selected')">😊</button>
+        <button class="mood-btn" onclick="this.classList.toggle('selected')">🤩</button>
+      </div>
+      <div style="text-align:center;font-size:.75rem;color:var(--text-s)">今週のチームムード推移</div>
+      <div class="mood-chart">
+        <div><div class="mood-bar" style="height:30px;background:#f59e0b"></div><div class="mood-label">月</div></div>
+        <div><div class="mood-bar" style="height:45px;background:#22c55e"></div><div class="mood-label">火</div></div>
+        <div><div class="mood-bar" style="height:40px;background:#22c55e"></div><div class="mood-label">水</div></div>
+        <div><div class="mood-bar" style="height:50px;background:#22c55e"></div><div class="mood-label">木</div></div>
+        <div><div class="mood-bar" style="height:35px;background:#f59e0b"></div><div class="mood-label">金</div></div>
+      </div>
+      <div class="mood-team">
+        <div class="mood-member"><div class="emoji">🌿</div><div>😊</div><div>山口</div></div>
+        <div class="mood-member"><div class="emoji">🔥</div><div>😐</div><div>市川</div></div>
+        <div class="mood-member"><div class="emoji">💎</div><div>🤩</div><div>村山</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IDEA 3: Sprint Retro -->
+<div class="idea-card">
+  <div class="idea-header">
+    <div class="idea-icon" style="background:#dcfce7">🔄</div>
+    <div>
+      <div class="idea-title">③ スプリント振り返り（KPT）</div>
+      <div class="idea-subtitle">Keep / Problem / Try をリアルタイムで共有</div>
+    </div>
+  </div>
+  <div class="idea-body">
+    Standuply のレトロ機能に着想。スプリント終了時にチーム全員がKeep/Problem/Tryを付箋形式で投稿。
+    匿名モード対応で心理的安全性を確保。Firebaseリアルタイム同期で全員の画面に即反映。
+  </div>
+  <div class="idea-tags">
+    <span class="tag tag-type">🏃 アジャイル</span>
+    <span class="tag tag-effort">⏱ 実装: 中</span>
+    <span class="tag tag-impact">🚀 インパクト: 高</span>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header"><div class="mockup-dot" style="background:#22c55e"></div> Sprint 2 振り返り — 👥 3人参加中</div>
+    <div class="mockup-body">
+      <div class="retro-cols">
+        <div class="retro-col retro-good">
+          <div class="retro-col-title">😊 Keep（続けたい）</div>
+          <div class="retro-item">🌿 朝のスタンドアップが定着してきた</div>
+          <div class="retro-item">💎 PRレビューの質が上がった</div>
+          <div class="retro-item">🔥 ビジネス側の進捗共有が増えた</div>
+          <div class="retro-add">＋ 追加</div>
+        </div>
+        <div class="retro-col retro-bad">
+          <div class="retro-col-title">😢 Problem（改善したい）</div>
+          <div class="retro-item">🌿 タスクの見積もりが甘かった</div>
+          <div class="retro-item">💎 ドキュメントが追いついていない</div>
+          <div class="retro-add">＋ 追加</div>
+        </div>
+        <div class="retro-col retro-try">
+          <div class="retro-col-title">💡 Try（試したい）</div>
+          <div class="retro-item">💎 見積もりにバッファを20%追加</div>
+          <div class="retro-item">🌿 コード変更時にREADME更新をルール化</div>
+          <div class="retro-add">＋ 追加</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IDEA 4: Sprint Dashboard -->
+<div class="idea-card">
+  <div class="idea-header">
+    <div class="idea-icon" style="background:#dbeafe">📊</div>
+    <div>
+      <div class="idea-title">④ スプリントダッシュボード</div>
+      <div class="idea-subtitle">進捗率・バーンダウン・ベロシティを一画面で</div>
+    </div>
+  </div>
+  <div class="idea-body">
+    Linear のスプリントビューに着想。2週間スプリントの進捗を俯瞰表示。
+    看板タスクと連動し、自動でバーンダウンチャートを生成。ベロシティの推移も可視化。
+  </div>
+  <div class="idea-tags">
+    <span class="tag tag-type">📈 データ可視化</span>
+    <span class="tag tag-effort">⏱ 実装: 高</span>
+    <span class="tag tag-impact">🚀 インパクト: 高</span>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header"><div class="mockup-dot" style="background:#3b82f6"></div> Sprint 2 — 残り5日</div>
+    <div class="mockup-body">
+      <div class="sprint-bar">
+        <div class="sprint-stat">進捗 60%</div>
+        <div class="sprint-progress"><div class="sprint-fill" style="width:60%"></div></div>
+        <div class="sprint-stat">6/10 完了</div>
+      </div>
+      <div class="sprint-lanes">
+        <div class="sprint-lane sprint-lane-todo">
+          <div class="sprint-lane-title">📋 TODO (2)</div>
+          <div class="sprint-task"><span class="priority-badge p-high">H</span>SEE:D連動</div>
+          <div class="sprint-task"><span class="priority-badge p-mid">M</span>認証実装</div>
+        </div>
+        <div class="sprint-lane sprint-lane-wip">
+          <div class="sprint-lane-title">🔨 WIP (2)</div>
+          <div class="sprint-task"><span class="priority-badge p-high">H</span>フロントエンド完成</div>
+          <div class="sprint-task"><span class="priority-badge p-mid">M</span>解法グラフ整備</div>
+        </div>
+        <div class="sprint-lane sprint-lane-done">
+          <div class="sprint-lane-title">✅ Done (6)</div>
+          <div class="sprint-task" style="opacity:.6"><span class="priority-badge p-low">L</span>日報UI改善</div>
+          <div class="sprint-task" style="opacity:.6"><span class="priority-badge p-mid">M</span>キャンバス実装</div>
+          <div class="sprint-task" style="opacity:.6"><span class="priority-badge p-high">H</span>GASデプロイ</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IDEA 5: Time Analytics -->
+<div class="idea-card">
+  <div class="idea-header">
+    <div class="idea-icon" style="background:#fee2e2">⏱</div>
+    <div>
+      <div class="idea-title">⑤ 作業時間アナリティクス</div>
+      <div class="idea-subtitle">誰が何にどれだけ時間を使ったか可視化</div>
+    </div>
+  </div>
+  <div class="idea-body">
+    既存の「記録」機能のデータを活用し、週次/月次の作業時間分析を表示。
+    カテゴリ別（コーディング/設計/MTG等）の内訳、メンバー比較、トレンドを自動集計。
+  </div>
+  <div class="idea-tags">
+    <span class="tag tag-type">📊 データ活用</span>
+    <span class="tag tag-effort">⏱ 実装: 低</span>
+    <span class="tag tag-impact">🚀 インパクト: 中</span>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header"><div class="mockup-dot" style="background:#ef4444"></div> 今週の作業時間 — 5/1〜5/5</div>
+    <div class="mockup-body">
+      <div class="time-grid">
+        <div class="time-card"><div class="time-value">24h</div><div class="time-label">総作業時間</div></div>
+        <div class="time-card"><div class="time-value">8h</div><div class="time-label">平均/人</div></div>
+        <div class="time-card"><div class="time-value">💻 42%</div><div class="time-label">コーディング率</div></div>
+      </div>
+      <div style="font-size:.75rem;color:var(--text-s);text-align:center;margin-bottom:8px">日別作業時間</div>
+      <div class="time-chart">
+        <div><div class="time-bar" style="height:50px"></div><div class="time-weekday">月</div></div>
+        <div><div class="time-bar" style="height:65px"></div><div class="time-weekday">火</div></div>
+        <div><div class="time-bar" style="height:40px"></div><div class="time-weekday">水</div></div>
+        <div><div class="time-bar" style="height:70px"></div><div class="time-weekday">木</div></div>
+        <div><div class="time-bar" style="height:55px"></div><div class="time-weekday">金</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div class="footer">
+  <p>💡 優先度提案: ① 非同期スタンドアップ → ② ムードトラッカー → ③ KPT振り返り</p>
+  <p style="margin-top:4px">これらは既存のFirebase基盤を活用でき、実装コストが低い順に並べています。</p>
+</div>
+
+</body>
+</html>

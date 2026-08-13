@@ -1,0 +1,69 @@
+{
+  "rules": {
+    "users": {
+      ".read": true,
+      ".write": false,
+      "$user_id": {
+        ".validate": "newData.hasChildren(['short', 'name', 'role', 'emoji', 'bg'])",
+        "short": { ".validate": "newData.isString()" },
+        "name": { ".validate": "newData.isString()" },
+        "role": { ".validate": "newData.isString()" },
+        "emoji": { ".validate": "newData.isString()" },
+        "bg": { ".validate": "newData.isString()" }
+      }
+    },
+    "tasks": {
+      ".read": true,
+      ".write": true,
+      "$ctx": {
+        ".validate": "$ctx == 'dev' || $ctx == 'biz'",
+        "$task_id": {
+          ".validate": "newData.hasChildren(['id', 'title', 'status', 'prio', 'assign', 'ctx'])",
+          "id": { ".validate": "newData.isNumber() || newData.isString()" },
+          "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500" },
+          "status": { ".validate": "newData.val() == 'TODO' || newData.val() == 'WIP' || newData.val() == 'Review' || newData.val() == 'Blocked' || newData.val() == 'Done'" },
+          "prio": { ".validate": "newData.val() == '高' || newData.val() == '中' || newData.val() == '低'" },
+          "assign": { ".validate": "newData.isString()" },
+          "due": { ".validate": "newData.isString() || !newData.exists()" },
+          "tags": { ".validate": "newData.isString() || newData.hasChildren() || !newData.exists()" },
+          "ctx": { ".validate": "newData.val() == 'dev' || newData.val() == 'biz'" },
+          "created_at": { ".validate": "newData.isString() || !newData.exists()" }
+        }
+      }
+    },
+    "workLogs": {
+      ".read": true,
+      ".write": true,
+      "$log_id": {
+        ".validate": "newData.hasChildren(['taskId', 'date', 'minutes', 'user'])",
+        "taskId": { ".validate": "newData.isNumber() || newData.isString()" },
+        "date": { ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)" },
+        "minutes": { ".validate": "newData.isNumber() && newData.val() > 0" },
+        "user": { ".validate": "newData.val() == '山口' || newData.val() == '市川' || newData.val() == '村山'" },
+        "comment": { ".validate": "newData.isString() || !newData.exists()" }
+      }
+    },
+    "goals": {
+      ".read": true,
+      ".write": true
+    },
+    "memberStatus": {
+      ".read": true,
+      "$user_short": {
+        ".write": "$user_short == 'yamaguchi' || $user_short == 'ichikawa' || $user_short == 'murayama' || $user_short == '山口' || $user_short == '市川' || $user_short == '村山'",
+        ".validate": "newData.val() == 'online' || newData.val() == 'away' || newData.val() == 'offline'"
+      }
+    },
+    "dailyMemos": {
+      ".read": true,
+      ".write": true,
+      "$memo_key": {
+        ".validate": "newData.isString() && newData.val().length <= 5000"
+      }
+    },
+    "canvases": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
