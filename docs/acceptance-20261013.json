@@ -8,6 +8,7 @@
     "webAppGitHubLogin": "after deployment of f7cc409909c7b7a1d22bc175d59706c9cb4d7d90, clicked GitHub sign-in in the existing Chrome tab; same-tab OAuth returned as 山口 and Dashboard read the saved Project from RTDB",
     "webAppLoginProof": "test-results/manual/webapp-login-success-20261013.png saved from the live browser; not a mocked test image",
     "project": "受入テスト 2026-10-13 was saved through the authenticated browser and appeared in the Project list",
+    "acceptanceProjectId": "b819c1c6-d932-44ae-9677-6329faf96a16; confirmed by read-only Firebase CLI using the specified Google admin account, repository YSsolo/viaglyph-workspace-app; no token values read",
     "milestone": "受入確認：会議→Task→進捗 was saved and the Project showed one open Milestone",
     "canvas": "受入テスト会議 2026-10-13 was created, /task opened the formal Task dialog",
     "canvasTask": "受入テスト：会議から正式Task saved without owner/date as Backlog and the Canvas displayed its linked Project/Milestone; a subsequent UI error was reproduced and fixed locally",
@@ -23,7 +24,8 @@
   "localVerification": {
     "pmBrowserSuite": { "passed": 19, "file": "tests/pm-v2.spec.js", "scope": "local UI with injected identity and controlled data/writes, including Backlog quick-transition editing the same Task ID; not real OAuth or Issue/Slack acceptance" },
     "syncErrorRedaction": { "passed": 2, "file": "tests/sync-error-redaction.test.cjs", "scope": "production Actions entrypoint and Functions scheduled/PM HTTP error boundaries, synthetic credential-bearing transport exceptions, no real credentials/network; Slack-specific and webhook error boundaries still require separate verification" },
-    "actionsProjectScope": { "passed": 4, "file": "tests/actions-scope.test.cjs", "scope": "production worker entrypoint with isolated transport: selected Project only, separate acceptance receipt, invalid/unknown scope fails before writes, scoped digest rejection, unchanged all-Project behavior without a scope; no real Issue creation or OIDC execution" },
+    "actionsProjectScope": { "passed": 5, "file": "tests/actions-scope.test.cjs", "scope": "production worker entrypoint with isolated transport: selected Project only, separate acceptance receipt, invalid/unknown scope fails before writes, scoped digest rejection, unchanged all-Project behavior without a scope, pulls bind exact record IDs; no real Issue creation or OIDC execution" },
+    "syncRecordTarget": { "passed": 3, "file": "tests/sync-record-target.test.cjs", "scope": "actual production helpers with in-memory DB and synthetic HTTP: foreign-Project Milestone rejected before external request/write; duplicate Issue/Milestone references in other Projects cannot redirect a selected pull; re-check required after independent review identified the original P1 boundary violation" },
     "authSession": { "passed": 7, "file": "tests/auth-session.test.cjs", "scope": "SDK observer-boundary harness; signed identity selection, auth-loss cleanup, stale request ordering and provider error redaction" },
     "authDomain": { "passed": 3, "file": "tests/auth-domain.test.cjs" },
     "hostingSecurity": { "passed": 3, "file": "tests/hosting-security.test.cjs" },

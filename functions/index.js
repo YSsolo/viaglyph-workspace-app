@@ -317,6 +317,7 @@ async function syncTaskRecord(task) {
   const [projectSnap, milestoneSnap] = await Promise.all([db.ref(`pm/projects/${task.projectId}`).get(), db.ref(`pm/milestones/${task.milestoneId}`).get()]);
   const project = projectSnap.val(); let milestone = milestoneSnap.val();
   if (!project?.github?.owner || !project?.github?.repo) throw new Error('Project repository is not configured');
+  if (milestone && milestone.projectId !== task.projectId) throw new Error('Task Milestone must belong to its Project');
   const { owner, repo } = project.github;
   if (milestone && !milestone.github?.number) { await syncMilestoneRecord(milestone); milestone = (await db.ref(`pm/milestones/${task.milestoneId}`).get()).val(); }
   await ensureStatusLabels(owner, repo);
@@ -403,7 +404,9 @@ function validWebhook(req) {
 async function applyIssueWebhook(payload) {
   const issue = payload.issue; const repository = payload.repository;
   const tasks = (await db.ref('pm/tasks').get()).val() || {};
-  const task = Object.values(tasks).find(item => item?.github?.number === issue.number && item?.github?.url === issue.html_url);
+  const task = Object.values(tasks).find(item =>
+    (payload.expectedRecordId === undefined || item?.id === payload.expectedRecordId)
+    && item?.github?.number === issue.number && item?.github?.url === issue.html_url);
   if (!task) return;
   const labels = (issue.labels || []).map(label => label.name);
   let status = labels.map(label => LABEL_STATUS[label]).find(Boolean);
@@ -428,7 +431,9 @@ async function applyMilestoneWebhook(payload) {
   const milestone = payload.milestone; const repository = payload.repository;
   const milestones = (await db.ref('pm/milestones').get()).val() || {};
   const projects = (await db.ref('pm/projects').get()).val() || {};
-  const record = Object.values(milestones).find(item => item?.github?.number === milestone.number && `${projects[item.projectId]?.github?.owner}/${projects[item.projectId]?.github?.repo}`.toLowerCase() === repository.full_name.toLowerCase());
+  const record = Object.values(milestones).find(item =>
+    (payload.expectedRecordId === undefined || item?.id === payload.expectedRecordId)
+    && item?.github?.number === milestone.number && `${projects[item.projectId]?.github?.owner}/${projects[item.projectId]?.github?.repo}`.toLowerCase() === repository.full_name.toLowerCase());
   if (!record) return;
   const patch = { name: milestone.title, dueDate: milestone.due_on ? milestone.due_on.slice(0,10) : '', status: milestone.state === 'closed' ? 'closed' : 'open', externalUpdatedAt: milestone.updated_at, syncStatus: 'synced', updatedAt: new Date().toISOString(), updatedBy: `GitHub/${repository.full_name}` };
   if (payload.expectedUpdatedAt !== undefined) {

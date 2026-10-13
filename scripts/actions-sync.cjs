@@ -32,7 +32,7 @@ async function reconcile() {
           const latest = (await ref.get()).val();
           if (latest.updatedAt !== record.updatedAt || ['pending', 'error'].includes(latest.syncStatus)) continue;
           if (!record.externalUpdatedAt || external.updated_at > record.externalUpdatedAt) {
-            await pull({ [collection === 'tasks' ? 'issue' : 'milestone']: external, expectedUpdatedAt: record.updatedAt, repository: { full_name: `${owner}/${repo}` } });
+            await pull({ [collection === 'tasks' ? 'issue' : 'milestone']: external, expectedRecordId: record.id, expectedUpdatedAt: record.updatedAt, repository: { full_name: `${owner}/${repo}` } });
           }
         }
       } catch (error) {
