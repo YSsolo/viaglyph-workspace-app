@@ -15,7 +15,7 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `pm_${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const now = () => new Date().toISOString();
   const esc = (value) => String(value || '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' })[c]);
-  const dateOnly = () => new Date().toISOString().slice(0, 10);
+  const dateOnly = (offsetDays = 0) => new Date(Date.now() + (9 + offsetDays * 24) * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const PM = window.PM = {
     state: { projects: {}, milestones: {}, tasks: {}, settings: {}, ready: false, migration: null },
@@ -192,23 +192,24 @@
       }
     },
     projectHealth(project) {
-      const today = dateOnly(); const near = new Date(); near.setDate(near.getDate() + 7); const nearDate = near.toISOString().slice(0,10);
+      const today = dateOnly(); const nearDate = dateOnly(7);
       const tasks = this.taskList(project.id);
       if (tasks.some(t => t.status === 'blocked' || (t.dueDate && t.dueDate < today && t.status !== 'done'))) return 'red';
-      if (tasks.some(t => (t.dueDate && t.dueDate <= nearDate && t.status !== 'done') || t.status === 'review' || t.syncStatus === 'error')) return 'yellow';
+      if (tasks.some(t => (t.dueDate && t.dueDate <= nearDate && t.status !== 'done') || t.syncStatus === 'error') || this.alerts().review.some(t => t.projectId === project.id)) return 'yellow';
       return 'green';
     },
     alerts() {
-      const today = dateOnly(); const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); const tomorrowDate = tomorrow.toISOString().slice(0,10);
-      const week = new Date(); week.setDate(week.getDate() + 7); const weekDate = week.toISOString().slice(0,10);
+      const today = dateOnly(); const tomorrowDate = dateOnly(1);
+      const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+      const weekStart = dateOnly(-weekday); const weekDate = dateOnly(6 - weekday);
       const reviewLimit = Date.now() - 48 * 60 * 60 * 1000;
       const active = this.tasks.filter(t => t.status !== 'done');
       return {
         overdue: active.filter(t => t.dueDate && t.dueDate < today),
         soon: active.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= tomorrowDate),
-        week: active.filter(t => t.dueDate && t.dueDate > tomorrowDate && t.dueDate <= weekDate),
+        week: active.filter(t => t.dueDate && t.dueDate >= weekStart && t.dueDate <= weekDate),
         blocked: active.filter(t => t.status === 'blocked'),
-        review: active.filter(t => t.status === 'review' && new Date(t.updatedAt || t.createdAt).getTime() < reviewLimit),
+        review: active.filter(t => t.status === 'review' && new Date(t.updatedAt || t.createdAt).getTime() <= reviewLimit),
         sync: this.tasks.filter(t => t.syncStatus === 'error')
       };
     },
