@@ -10,7 +10,7 @@ test('the manual acceptance workflow pins reviewed code and one Project with no 
   assert.match(source, /on:\s*\n\s+workflow_dispatch:/);
   assert.doesNotMatch(source, /\b(schedule|pull_request|push|environment):/);
   assert.ok(source.includes("github.repository == 'YSsolo/viaglyph-workspace-app' && github.ref == 'refs/heads/master'"));
-  assert.ok(source.includes('ref: c0b11be869720be50c42d8a3afde326770fd35dc'));
+  assert.ok(source.includes('ref: 29467c428cb446857cd4cde99ad58ea7299aff29'));
   assert.ok(source.includes('persist-credentials: false'));
   assert.ok(source.includes('group: workspace-sync'));
   assert.ok(source.includes('WORKSPACE_SYNC_PROJECT_ID: b819c1c6-d932-44ae-9677-6329faf96a16'));
@@ -19,6 +19,8 @@ test('the manual acceptance workflow pins reviewed code and one Project with no 
   assert.doesNotMatch(source, /SLACK_BOT_TOKEN|firebase-tools.*deploy|firebase deploy|migrate-data/);
   assert.ok(source.indexOf('node --test') < source.indexOf('google-github-actions/auth@'));
   assert.ok(source.includes('tests/worker-wif-runtime.test.cjs'));
+  assert.ok(source.includes('tests/record-transaction.test.cjs'));
+  assert.ok(source.indexOf('tests/record-transaction.test.cjs') < source.indexOf('google-github-actions/auth@'));
   assert.ok(source.indexOf('tests/worker-wif-runtime.test.cjs') < source.indexOf('google-github-actions/auth@'));
   assert.ok(source.includes('id-token: write'));
   assert.ok(source.includes('contents: read'));
