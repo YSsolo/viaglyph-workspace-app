@@ -10,7 +10,7 @@ test('the manual acceptance workflow pins reviewed code and one Project with no 
   assert.match(source, /on:\s*\n\s+workflow_dispatch:/);
   assert.doesNotMatch(source, /\b(schedule|pull_request|push|environment):/);
   assert.ok(source.includes("github.repository == 'YSsolo/viaglyph-workspace-app' && github.ref == 'refs/heads/master'"));
-  assert.ok(source.includes('ref: e923716720d8ab59937ce021e9f15dae63a10a5d'));
+  assert.ok(source.includes('ref: 7bbe1ae1d8405c989b12142e44a2b1a92b5968dd'));
   assert.ok(source.includes('persist-credentials: false'));
   assert.ok(source.includes('group: workspace-sync'));
   assert.ok(source.includes('WORKSPACE_SYNC_PROJECT_ID: b819c1c6-d932-44ae-9677-6329faf96a16'));
@@ -18,6 +18,8 @@ test('the manual acceptance workflow pins reviewed code and one Project with no 
   assert.ok(source.includes('GITHUB_TOKEN_YSSOLO: ${{ secrets.WORKSPACE_GH_PAT_YSSOLO }}'));
   assert.doesNotMatch(source, /SLACK_BOT_TOKEN|firebase-tools.*deploy|firebase deploy|migrate-data/);
   assert.ok(source.indexOf('node --test') < source.indexOf('google-github-actions/auth@'));
+  assert.ok(source.includes('tests/worker-wif-runtime.test.cjs'));
+  assert.ok(source.indexOf('tests/worker-wif-runtime.test.cjs') < source.indexOf('google-github-actions/auth@'));
   assert.ok(source.includes('id-token: write'));
   assert.ok(source.includes('contents: read'));
   assert.ok(source.includes('node scripts/actions-sync.cjs'));
