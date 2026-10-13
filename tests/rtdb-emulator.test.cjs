@@ -175,6 +175,85 @@ for (const scenario of ['edit-during-push', 'delete-during-pull', 'delete-on-pul
   });
 }
 
+for (const collection of ['tasks', 'milestones']) {
+  for (const deleted of [false, true]) {
+    test(`native manual ${collection} retry preserves ${deleted ? 'deletion' : 'a newer queued edit'}`, { timeout: 20000 }, async () => {
+      const cached = { id: 'r1', projectId: 'p1', milestoneId: 'm1', title: 'Cached', name: 'Cached',
+        status: collection === 'tasks' ? 'todo' : 'open', assignees: ['山口'], dueDate: '2026-10-13',
+        priority: 'medium', createdAt: '2026-10-13T00:00:00Z', updatedAt: 'old', updatedBy: '山口',
+        syncStatus: 'error', lastSyncDirection: 'pull' };
+      const current = { ...cached, title: 'New local edit', name: 'New local edit', updatedAt: 'new', syncStatus: 'pending', lastSyncDirection: 'push' };
+      await seed({ pm: { [collection]: deleted ? {} : { r1: current } } });
+      const database = memberDb('174987576');
+      const browser = application(database);
+      browser.pm.state[collection] = { r1: cached };
+      assert.equal(await browser.pm.retryRecord(collection, 'r1'), false);
+      assert.deepEqual((await database.ref(`pm/${collection}/r1`).get()).val(), deleted ? null : current);
+    });
+  }
+}
+
+test('native incoming failure retries a pull without an outgoing overwrite', { timeout: 20000 }, async () => {
+  const task = { id: 't1', projectId: 'p1', milestoneId: 'm1', title: 'Local before', status: 'todo',
+    assignees: ['山口'], dueDate: '2026-10-13', priority: 'medium', updatedAt: 'r1', syncStatus: 'synced',
+    createdAt: '2026-10-13T00:00:00Z', updatedBy: '山口',
+    github: { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' }, externalUpdatedAt: '2026-10-13T00:00:00Z' };
+  await seed({ pm: { tasks: { t1: task }, projects: { p1: { github: { owner: 'YSsolo', repo: 'repo' } } } } });
+  const admin = require('../functions/node_modules/firebase-admin');
+  const app = admin.initializeApp({ projectId, databaseURL: `https://${projectId}.firebaseio.com`,
+    credential: { getAccessToken: async () => { throw new Error('REAL_CREDENTIALS_FORBIDDEN'); } } }, 'incoming-retry');
+  try {
+    const db = app.database();
+    let incoming = 0; let outgoing = 0;
+    const worker = { ...nativeWorker(db),
+      syncTaskRecord: async () => { outgoing++; throw new Error('UNEXPECTED_OUTGOING_WRITE'); },
+      github: async () => {
+        incoming++;
+        if (incoming === 1) throw new Error('SYNTHETIC_TRANSPORT_FAILURE');
+        return { number: 7, html_url: task.github.url, title: 'External after recovery', state: 'closed',
+          closed_at: '2026-10-13T01:00:00Z', assignees: [{ login: 'YSsolo' }], updated_at: '2026-10-13T01:00:00Z' };
+      }
+    };
+    const execute = async () => {
+      let finish;
+      const finished = new Promise(resolve => { finish = resolve; });
+      worker.shutdown = async () => finish();
+      const runtimeProcess = { env: { WORKSPACE_SYNC_PROJECT_ID: 'p1', WORKSPACE_SEND_DIGEST: 'false' }, exitCode: 0 };
+      const filename = path.resolve(__dirname, '../scripts/actions-sync.cjs');
+      vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { process: runtimeProcess, console: { error() {} }, Date,
+        require: name => name === '../functions' ? { workspaceWorker: worker }
+          : require(path.resolve(path.dirname(filename), name)) }, { filename });
+      await finished;
+      return runtimeProcess.exitCode;
+    };
+    assert.equal(await execute(), 1);
+    const failed = (await db.ref('pm/tasks/t1').get()).val();
+    assert.equal(failed.title, task.title);
+    assert.equal(failed.syncStatus, 'error');
+    assert.equal(failed.lastSyncDirection, 'pull');
+    const browser = application(memberDb('174987576'));
+    browser.pm.state.tasks = { t1: failed };
+    await browser.pm.retryRecord('tasks', 't1');
+    const queued = (await db.ref('pm/tasks/t1').get()).val();
+    assert.equal(queued.syncStatus, 'error');
+    assert.equal(queued.lastSyncDirection, 'pull');
+    assert.equal(await execute(), 0);
+    let state;
+    await environment.withSecurityRulesDisabled(async context => { state = (await context.database().ref('pm').get()).val(); });
+    assert.equal(state.tasks.t1.title, 'External after recovery');
+    assert.equal(state.tasks.t1.status, 'done');
+    assert.equal(state.tasks.t1.syncStatus, 'synced');
+    assert.equal(state.tasks.t1.lastSyncDirection, undefined);
+    assert.equal(state.tasks.t1.lastError, undefined);
+    assert.equal(state.tasks.t1.dueDate, task.dueDate);
+    assert.equal(state.tasks.t1.completedAt, '2026-10-13T01:00:00Z');
+    assert.equal(state.acceptanceRuns.p1.failures, 0);
+    assert.equal(state.integration, undefined);
+    assert.equal(incoming, 2);
+    assert.equal(outgoing, 0);
+  } finally { await app.delete(); }
+});
+
 // Only DOM/session boundaries are stubbed. Database callbacks, commits,
 // authentication claims and Rules validation use the real Firebase SDK/emulator.
 function application(db) {

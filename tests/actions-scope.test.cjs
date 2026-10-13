@@ -4,13 +4,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-async function runWorker(projectId, sendDigest = false, clean = false, deleteDuringPull = false, failPull = false, editDuringFailure = false) {
+async function runWorker(projectId, sendDigest = false, clean = false, deleteDuringPull = false, failPull = false, editDuringFailure = false, options = {}) {
   const writes = [];
   const synced = [];
   const pulled = [];
   const listeners = new Set();
   const process = { env: { WORKSPACE_SYNC_PROJECT_ID: projectId, WORKSPACE_SEND_DIGEST: String(sendDigest) }, exitCode: 0 };
-  const data = {
+  const data = options.data ? structuredClone(options.data) : {
     'pm/projects/acceptance': { id: 'acceptance', github: { owner: 'YSsolo', repo: 'viaglyph-workspace-app' } },
     'pm/tasks': {
       t1: { id: 't1', projectId: 'acceptance', syncStatus: 'pending', updatedAt: 'r1' },
@@ -61,6 +61,7 @@ async function runWorker(projectId, sendDigest = false, clean = false, deleteDur
     syncMilestoneRecord: async record => { synced.push(record.id); },
     syncTaskRecord: async record => { synced.push(record.id); },
     github: async (_, resource) => {
+      if (options.failCleanPull && resource.includes('/issues/')) throw new Error('SYNTHETIC_TRANSPORT_FAILURE');
       if (editDuringFailure && resource.includes('/issues/')) {
         Object.assign(data['pm/tasks/t1'], { title: 'Newer edit', updatedAt: 'r-next', syncStatus: 'pending' });
         throw new Error('SYNTHETIC_TRANSPORT_FAILURE');
@@ -85,6 +86,28 @@ async function runWorker(projectId, sendDigest = false, clean = false, deleteDur
   await finished;
   return { writes, synced, pulled, data, listeners, exitCode: process.exitCode };
 }
+
+test('legacy errors without a direction never automatically overwrite either side', async () => {
+  const original = await runWorker('acceptance', false, true);
+  const task = original.data['pm/tasks/t1'];
+  Object.assign(task, { title: 'Unresolved local data', syncStatus: 'error' });
+  delete task.lastSyncDirection;
+  const retry = await runWorker('acceptance', false, false, false, false, false, { data: original.data });
+  assert.deepEqual(retry.synced, [], 'an ambiguous legacy failure is not an outgoing instruction');
+  assert.equal(retry.pulled.some(payload => payload.expectedRecordId === 't1'), false);
+  assert.equal(retry.data['pm/tasks/t1'].title, 'Unresolved local data');
+  assert.equal(retry.data['pm/tasks/t1'].syncStatus, 'error');
+  assert.equal(retry.exitCode, 1);
+});
+
+test('a failed incoming pull retries incoming rather than pushing stale Workspace fields to GitHub', async () => {
+  const failed = await runWorker('acceptance', false, true, false, false, false, { failCleanPull: true });
+  assert.equal(failed.exitCode, 1);
+  assert.equal(failed.data['pm/tasks/t1'].syncStatus, 'error');
+  const retry = await runWorker('acceptance', false, false, false, false, false, { data: failed.data });
+  assert.deepEqual(retry.synced, [], 'incoming failure must not turn into an outgoing overwrite');
+  assert.ok(retry.pulled.some(payload => payload.expectedRecordId === 't1'));
+});
 
 test('a scoped acceptance run syncs only its Project and does not report global health', async () => {
   const result = await runWorker('acceptance');

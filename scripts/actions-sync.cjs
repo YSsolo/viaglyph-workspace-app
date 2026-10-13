@@ -19,8 +19,14 @@ async function reconcile() {
     for (const record of Object.values(records)) {
       if (projectId && record.projectId !== projectId) continue;
       const ref = worker.db.ref(`pm/${collection}/${record.id}`);
+      const retryingPull = record.syncStatus === 'error' && record.lastSyncDirection === 'pull';
+      const direction = record.syncStatus === 'pending' ? 'push'
+        : record.syncStatus === 'error' ? (['pull', 'push'].includes(record.lastSyncDirection) ? record.lastSyncDirection : 'unknown') : 'pull';
       try {
-        if (['pending', 'error'].includes(record.syncStatus)) {
+        // A legacy failure has no reliable source-of-truth direction. Do not
+        // infer it from timestamps or overwrite either side automatically.
+        if (direction === 'unknown') throw new Error('Unknown synchronization direction');
+        if (direction === 'push') {
           await sync(record);
           // A browser may edit while the network request is in flight. Preserve
           // that newer revision and leave it queued for the next run.
@@ -31,9 +37,11 @@ async function reconcile() {
           const { owner, repo } = project.github;
           const external = await worker.github(owner, `/repos/${owner}/${repo}/${collection === 'tasks' ? 'issues' : 'milestones'}/${record.github.number}`);
           const latest = (await ref.get()).val();
-          if (!latest || latest.updatedAt !== record.updatedAt || ['pending', 'error'].includes(latest.syncStatus)) continue;
-          if (!record.externalUpdatedAt || external.updated_at > record.externalUpdatedAt) {
-            await pull({ [collection === 'tasks' ? 'issue' : 'milestone']: external, expectedRecordId: record.id, expectedUpdatedAt: record.updatedAt, repository: { full_name: `${owner}/${repo}` } });
+          const latestPullRetry = retryingPull && latest?.syncStatus === 'error' && latest?.lastSyncDirection === 'pull';
+          if (!latest || latest.updatedAt !== record.updatedAt || latest.syncStatus === 'pending'
+            || (latest.syncStatus === 'error' && !latestPullRetry)) continue;
+          if (retryingPull || !record.externalUpdatedAt || external.updated_at > record.externalUpdatedAt) {
+            await pull({ [collection === 'tasks' ? 'issue' : 'milestone']: external, expectedRecordId: record.id, expectedUpdatedAt: record.updatedAt, allowPullRetry: retryingPull, repository: { full_name: `${owner}/${repo}` } });
           }
         }
       } catch (error) {
@@ -43,7 +51,10 @@ async function reconcile() {
         await recordTransaction(ref, current => {
           if (!current) return undefined;
           if (current.updatedAt !== record.updatedAt) return current;
-          return { ...current, syncStatus: 'error', lastError: 'GitHub同期に失敗しました。連携設定を確認して再同期してください。', lastAttemptAt: stamp() };
+          return { ...current, syncStatus: 'error', lastSyncDirection: direction,
+            lastError: direction === 'unknown'
+              ? '旧同期エラーの方向が不明です。TaskとGitHubの内容を確認し、Workspaceの内容を反映する場合はTaskを保存してください。'
+              : 'GitHub同期に失敗しました。連携設定を確認して再同期してください。', lastAttemptAt: stamp() };
         });
         // Do not print tokens, request headers, or remote response bodies.
         console.error(`Synchronization failed: ${collection}/${record.id}`);

@@ -158,7 +158,7 @@
     },
     async syncTask(id) {
       if (window.WORKSPACE_SYNC_MODE === 'actions') {
-        await this.update(`pm/tasks/${id}`, { syncStatus: 'pending', lastError: null, ...this.metadata() });
+        await this.update(`pm/tasks/${id}`, { syncStatus: 'pending', lastSyncDirection: 'push', lastError: null, ...this.metadata() });
         return;
       }
       try {
@@ -170,7 +170,7 @@
     },
     async syncMilestone(id) {
       if (window.WORKSPACE_SYNC_MODE === 'actions') {
-        await this.update(`pm/milestones/${id}`, { syncStatus: 'pending', lastError: null, ...this.metadata() });
+        await this.update(`pm/milestones/${id}`, { syncStatus: 'pending', lastSyncDirection: 'push', lastError: null, ...this.metadata() });
         return;
       }
       try {
@@ -180,13 +180,48 @@
         await this.update(`pm/milestones/${id}`, { syncStatus: 'error', lastError: error.message, ...this.metadata() }).catch(() => {});
       }
     },
+    async retryRecord(collection, id) {
+      const record = this.state[collection]?.[id];
+      if (!record) return false;
+      if (window.WORKSPACE_SYNC_MODE === 'actions') {
+        if (record.syncStatus === 'error' && !['pull', 'push'].includes(record.lastSyncDirection)) {
+          toast('同期方向が不明です。TaskまたはMilestoneとGitHubの内容を確認し、Workspaceの内容を反映する場合は編集して保存してください。');
+          return false;
+        }
+        // Freeze the cached intent before waiting; listeners may refresh state.
+        const expected = { updatedAt: record.updatedAt, syncStatus: record.syncStatus, direction: record.lastSyncDirection };
+        const metadata = this.metadata();
+        const ref = window.firebaseDb.ref(`pm/${collection}/${id}`);
+        let observer;
+        try {
+          await new Promise((resolve, reject) => {
+            observer = () => resolve();
+            ref.on('value', observer, reject);
+          });
+          const result = await ref.transaction(current => {
+            if (!current || current.updatedAt !== expected.updatedAt || current.syncStatus !== expected.syncStatus
+              || current.lastSyncDirection !== expected.direction) return undefined;
+            const pull = expected.syncStatus === 'error' && expected.direction === 'pull';
+            return { ...current, syncStatus: pull ? 'error' : expected.syncStatus === 'synced' ? 'synced' : 'pending',
+              lastSyncDirection: pull ? 'pull' : expected.syncStatus === 'synced' ? null : 'push', lastError: null, ...metadata };
+          }, undefined, false);
+          return Boolean(result.committed);
+        } finally {
+          ref.off('value', observer);
+        }
+      }
+      await (collection === 'tasks' ? this.syncTask(id) : this.syncMilestone(id));
+      return true;
+    },
     async retryWorkspaceSession() {
       if (window.WORKSPACE_SYNC_MODE === 'actions') {
-        await Promise.all([
-          ...this.tasks.filter(task => ['pending', 'error'].includes(task.syncStatus)).map(task => this.syncTask(task.id)),
-          ...this.milestones.filter(item => ['pending', 'error'].includes(item.syncStatus)).map(item => this.syncMilestone(item.id))
+        const queued = await Promise.all([
+          ...this.tasks.filter(task => ['pending', 'error'].includes(task.syncStatus)).map(task => this.retryRecord('tasks', task.id)),
+          ...this.milestones.filter(item => ['pending', 'error'].includes(item.syncStatus)).map(item => this.retryRecord('milestones', item.id))
         ]);
-        toast('再同期を予約しました。次回の同期処理で反映されます。');
+        const count = queued.filter(Boolean).length;
+        toast(count ? `${count}件の再同期を予約しました。方向不明の項目は内容確認が必要です。`
+          : '自動で再同期できる項目はありません。エラーの内容を確認してください。');
         return;
       }
       const session = this.user();
@@ -272,7 +307,7 @@
     },
     taskRow(t) {
       const project = this.project(t.projectId); const milestone = this.milestone(t.milestoneId); const overdue = t.dueDate && t.dueDate < dateOnly() && t.status !== 'done';
-      return `<div class="pm-task-row"><select class="form-select pm-status ${t.status}" onchange="PM.updateTaskStatus('${t.id}',this.value)">${Object.entries(STATUS).map(([k,v]) => `<option value="${k}" ${t.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select><div><div class="pm-task-title" onclick="PM.openTaskModal('${t.id}')">${esc(t.title)}</div><div class="pm-task-meta">${esc(project?.name || '未分類')} / ${esc(milestone?.name || 'Milestone未設定')}</div>${t.lastError ? `<div class="pm-sync-error">同期: ${esc(t.lastError)}</div>` : ''}</div><div class="pm-task-meta">${(t.assignees || []).map(a => `${MEMBERS[a]?.emoji || ''}${esc(a)}`).join(' ') || '担当未設定'}</div><div class="pm-task-meta pm-due ${overdue ? 'overdue' : ''}">${t.dueDate ? esc(t.dueDate) : '期限未設定'}</div><div><span class="pm-status ${esc(t.syncStatus || 'pending')}">${esc(t.syncStatus || 'pending')}</span>${t.github?.url ? `<a class="pm-task-meta" href="${esc(t.github.url)}" target="_blank" rel="noreferrer"> Issue #${esc(t.github.number)}</a>` : ''}${t.syncStatus === 'error' ? `<button class="pm-btn" onclick="PM.syncTask('${t.id}')">再同期</button>` : ''}</div></div>`;
+      return `<div class="pm-task-row"><select class="form-select pm-status ${t.status}" onchange="PM.updateTaskStatus('${t.id}',this.value)">${Object.entries(STATUS).map(([k,v]) => `<option value="${k}" ${t.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select><div><div class="pm-task-title" onclick="PM.openTaskModal('${t.id}')">${esc(t.title)}</div><div class="pm-task-meta">${esc(project?.name || '未分類')} / ${esc(milestone?.name || 'Milestone未設定')}</div>${t.lastError ? `<div class="pm-sync-error">同期: ${esc(t.lastError)}</div>` : ''}</div><div class="pm-task-meta">${(t.assignees || []).map(a => `${MEMBERS[a]?.emoji || ''}${esc(a)}`).join(' ') || '担当未設定'}</div><div class="pm-task-meta pm-due ${overdue ? 'overdue' : ''}">${t.dueDate ? esc(t.dueDate) : '期限未設定'}</div><div><span class="pm-status ${esc(t.syncStatus || 'pending')}">${esc(t.syncStatus || 'pending')}</span>${t.github?.url ? `<a class="pm-task-meta" href="${esc(t.github.url)}" target="_blank" rel="noreferrer"> Issue #${esc(t.github.number)}</a>` : ''}${t.syncStatus === 'error' ? `<button class="pm-btn" onclick="PM.retryRecord('tasks','${t.id}')">再同期</button>` : ''}</div></div>`;
     },
     showTaskFilter(label) { this.filterProject = ''; this.filterAlert = label; setView('kanban'); this.renderTasks(); },
     renderAll() { if (!this.state.ready) return; this.renderDashboard(); this.renderProjects(); this.renderTasks(); this.ensureSettings(); },
@@ -439,8 +474,8 @@
   };
 
   API.getPmSession = () => PM.user();
-  API.syncPmTask = id => PM.syncTask(id);
-  API.syncPmMilestone = id => PM.syncMilestone(id);
+  API.syncPmTask = id => PM.retryRecord('tasks', id);
+  API.syncPmMilestone = id => PM.retryRecord('milestones', id);
   API.establishWorkspaceSession = body => PM.callFunction('establishWorkspaceSession', body);
 
   function showLoginError(error) {

@@ -68,6 +68,23 @@ test('external Issue and Milestone pulls populate transaction caches before guar
   assert.equal(listeners.size, 0);
 });
 
+test('an explicitly directed incoming retry recovers the Task and clears its failure metadata', async () => {
+  const github = { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' };
+  const task = { id: 't1', projectId: 'p1', title: 'Old', status: 'todo', dueDate: '2026-10-13',
+    updatedAt: 'r1', syncStatus: 'error', lastSyncDirection: 'pull', lastError: 'SAFE_FAILURE', github };
+  const data = { 'pm/tasks': { t1: task }, 'pm/tasks/t1': task, 'pm/milestones': {},
+    'pm/projects': { p1: { github: { owner: 'YSsolo', repo: 'repo' } } } };
+  const { worker } = loadWorker(data, null, true);
+  await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: 'r1', allowPullRetry: true,
+    repository: { full_name: 'YSsolo/repo' }, issue: { number: 7, html_url: github.url, title: 'External update',
+      state: 'open', assignees: [{ login: 'YSsolo' }], updated_at: '2026-10-13T01:00:00Z' } });
+  assert.equal(data['pm/tasks/t1'].title, 'External update');
+  assert.equal(data['pm/tasks/t1'].syncStatus, 'synced');
+  assert.equal(data['pm/tasks/t1'].lastSyncDirection, null);
+  assert.equal(data['pm/tasks/t1'].lastError, null);
+  assert.equal(data['pm/tasks/t1'].dueDate, '2026-10-13');
+});
+
 test('GitHub Review observations retain residence across edits and clear on exit', async () => {
   const github = { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' };
   const task = { id: 't1', projectId: 'p1', status: 'todo', updatedAt: 'r1', syncStatus: 'synced', github };

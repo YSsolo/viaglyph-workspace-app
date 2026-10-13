@@ -21,6 +21,34 @@ test.beforeEach(async ({ page }) => {
   }, fixture);
 });
 
+test('manual retry button cannot turn a newer local edit into an incoming retry', async ({ page }) => {
+  await page.evaluate(() => {
+    const cached = window.PM.state.tasks.t2;
+    Object.assign(cached, { syncStatus: 'error', lastSyncDirection: 'pull', updatedAt: 'r1' });
+    window.__retryAuthority = { ...cached, title: 'New authoritative edit', syncStatus: 'pending', lastSyncDirection: 'push', updatedAt: 'r2' };
+    window.__retryWrites = []; window.__retryFinished = false; window.__retryOff = 0;
+    window.firebaseDb = { ref: () => ({
+      on: (_event, observer) => queueMicrotask(() => observer({ val: () => window.__retryAuthority })),
+      off: () => { window.__retryOff++; },
+      update: async patch => { window.__retryWrites.push(patch); Object.assign(window.__retryAuthority, patch); window.__retryFinished = true; },
+      transaction: async update => {
+        const result = update({ ...window.__retryAuthority });
+        if (result !== undefined) { window.__retryWrites.push(result); window.__retryAuthority = result; }
+        window.__retryFinished = true;
+        return { committed: result !== undefined };
+      }
+    }) };
+    setView('kanban'); window.PM.renderTasks();
+  });
+  await page.locator('.pm-task-row').filter({ hasText: 'API契約を確認する' }).getByRole('button', { name: '再同期' }).click();
+  await expect.poll(() => page.evaluate(() => window.__retryFinished)).toBe(true);
+  expect(await page.evaluate(() => window.__retryWrites.length)).toBe(0);
+  expect(await page.evaluate(() => window.__retryAuthority.updatedAt)).toBe('r2');
+  expect(await page.evaluate(() => window.__retryAuthority.syncStatus)).toBe('pending');
+  expect(await page.evaluate(() => window.__retryAuthority.lastSyncDirection)).toBe('push');
+  expect(await page.evaluate(() => window.__retryOff)).toBe(1);
+});
+
 test('Dashboard shows COO action buckets and project health', async ({ page }) => {
   await expect(page.locator('#pm-dashboard')).toContainText('PM Dashboard');
   await expect(page.locator('#pm-dashboard')).toContainText('期限超過');

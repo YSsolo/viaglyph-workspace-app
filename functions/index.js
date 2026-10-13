@@ -406,8 +406,8 @@ function validWebhook(req) {
   return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
-async function applyExternalRevision(ref, expectedUpdatedAt, patch) {
-  return recordTransaction(ref, current => mergeExternalRevision(current, expectedUpdatedAt, patch));
+async function applyExternalRevision(ref, expectedUpdatedAt, patch, allowPullRetry = false) {
+  return recordTransaction(ref, current => mergeExternalRevision(current, expectedUpdatedAt, patch, allowPullRetry));
 }
 
 async function applyIssueWebhook(payload) {
@@ -435,8 +435,9 @@ async function applyIssueWebhook(payload) {
   // GitHub exposes no label-entry instant; track first observed Review residence.
   patch.reviewStartedAt = status === 'review'
     ? (task.status === 'review' ? task.reviewStartedAt || new Date().toISOString() : new Date().toISOString()) : null;
+  patch.lastSyncDirection = null;
   if (payload.expectedUpdatedAt !== undefined) {
-    await applyExternalRevision(db.ref(`pm/tasks/${task.id}`), payload.expectedUpdatedAt, patch);
+    await applyExternalRevision(db.ref(`pm/tasks/${task.id}`), payload.expectedUpdatedAt, patch, payload.allowPullRetry === true);
   } else {
     await db.ref(`pm/tasks/${task.id}`).update(patch);
   }
@@ -451,8 +452,10 @@ async function applyMilestoneWebhook(payload) {
     && item?.github?.number === milestone.number && `${projects[item.projectId]?.github?.owner}/${projects[item.projectId]?.github?.repo}`.toLowerCase() === repository.full_name.toLowerCase());
   if (!record) return;
   const patch = { name: milestone.title, dueDate: milestone.due_on ? milestone.due_on.slice(0,10) : '', status: milestone.state === 'closed' ? 'closed' : 'open', externalUpdatedAt: milestone.updated_at, syncStatus: 'synced', updatedAt: new Date().toISOString(), updatedBy: `GitHub/${repository.full_name}` };
+  patch.lastSyncDirection = null;
+  patch.lastError = null;
   if (payload.expectedUpdatedAt !== undefined) {
-    await applyExternalRevision(db.ref(`pm/milestones/${record.id}`), payload.expectedUpdatedAt, patch);
+    await applyExternalRevision(db.ref(`pm/milestones/${record.id}`), payload.expectedUpdatedAt, patch, payload.allowPullRetry === true);
   } else {
     await db.ref(`pm/milestones/${record.id}`).update(patch);
   }
