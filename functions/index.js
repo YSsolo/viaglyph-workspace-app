@@ -405,6 +405,21 @@ function validWebhook(req) {
   return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
+async function applyExternalRevision(ref, expectedUpdatedAt, patch) {
+  // get() does not populate the transaction cache. A first value event does;
+  // otherwise the initial null cache aborts a guarded transaction immediately.
+  let listener;
+  try {
+    await new Promise((resolve, reject) => {
+      listener = () => resolve();
+      ref.on('value', listener, reject);
+    });
+    return await ref.transaction(current => mergeExternalRevision(current, expectedUpdatedAt, patch), undefined, false);
+  } finally {
+    ref.off('value', listener);
+  }
+}
+
 async function applyIssueWebhook(payload) {
   const issue = payload.issue; const repository = payload.repository;
   const tasks = (await db.ref('pm/tasks').get()).val() || {};
@@ -425,7 +440,7 @@ async function applyIssueWebhook(payload) {
   if (!sameRepository) return;
   const patch = { title: issue.title, status, assignees, milestoneId: milestone?.id || task.milestoneId, externalUpdatedAt: issue.updated_at, syncStatus: 'synced', lastSyncedAt: new Date().toISOString(), lastError: null, updatedAt: new Date().toISOString(), updatedBy: `GitHub/${repository.full_name}` };
   if (payload.expectedUpdatedAt !== undefined) {
-    await db.ref(`pm/tasks/${task.id}`).transaction(current => mergeExternalRevision(current, payload.expectedUpdatedAt, patch));
+    await applyExternalRevision(db.ref(`pm/tasks/${task.id}`), payload.expectedUpdatedAt, patch);
   } else {
     await db.ref(`pm/tasks/${task.id}`).update(patch);
   }
@@ -441,7 +456,7 @@ async function applyMilestoneWebhook(payload) {
   if (!record) return;
   const patch = { name: milestone.title, dueDate: milestone.due_on ? milestone.due_on.slice(0,10) : '', status: milestone.state === 'closed' ? 'closed' : 'open', externalUpdatedAt: milestone.updated_at, syncStatus: 'synced', updatedAt: new Date().toISOString(), updatedBy: `GitHub/${repository.full_name}` };
   if (payload.expectedUpdatedAt !== undefined) {
-    await db.ref(`pm/milestones/${record.id}`).transaction(current => mergeExternalRevision(current, payload.expectedUpdatedAt, patch));
+    await applyExternalRevision(db.ref(`pm/milestones/${record.id}`), payload.expectedUpdatedAt, patch);
   } else {
     await db.ref(`pm/milestones/${record.id}`).update(patch);
   }

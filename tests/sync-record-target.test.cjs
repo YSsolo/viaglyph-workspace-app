@@ -4,17 +4,21 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function loadWorker(data, recoveredMilestone = null) {
+function loadWorker(data, recoveredMilestone = null, coldTransactions = false) {
   const writes = [];
   const requests = [];
   const bodies = [];
   const exported = {};
+  const warmTargets = new Set();
+  const listeners = new Set();
   const filename = path.resolve(__dirname, '../functions/index.js');
   const db = { ref: target => ({
     get: async () => ({ val: () => data[target] || null }),
+    on: (event, callback) => { warmTargets.add(target); listeners.add(callback); queueMicrotask(() => callback({ val: () => data[target] || null })); },
+    off: (event, callback) => { listeners.delete(callback); },
     update: async patch => { writes.push(target); Object.assign(data[target] ||= {}, patch); },
     transaction: async update => {
-      const result = update(data[target]);
+      const result = update(coldTransactions && !warmTargets.has(target) ? null : data[target]);
       if (result !== undefined) { writes.push(target); data[target] = result; }
     }
   }) };
@@ -38,8 +42,31 @@ function loadWorker(data, recoveredMilestone = null) {
       return require(path.resolve(path.dirname(filename), name));
     }
   }, { filename });
-  return { worker: exported.workspaceWorker, writes, requests, bodies };
+  return { worker: exported.workspaceWorker, writes, requests, bodies, listeners };
 }
+
+test('external Issue and Milestone pulls populate transaction caches before guarded merging', async () => {
+  const github = { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' };
+  const task = { id: 't1', projectId: 'p1', milestoneId: 'm1', title: 'Before', status: 'todo', dueDate: '2026-10-13',
+    updatedAt: 'r1', syncStatus: 'synced', github };
+  const milestone = { id: 'm1', projectId: 'p1', name: 'Before', status: 'open', successCriteria: 'LOCAL_ONLY',
+    updatedAt: 'r1', syncStatus: 'synced', github: { number: 1 } };
+  const data = { 'pm/tasks': { t1: task }, 'pm/tasks/t1': task, 'pm/milestones': { m1: milestone },
+    'pm/milestones/m1': milestone, 'pm/projects': { p1: { github: { owner: 'YSsolo', repo: 'repo' } } } };
+  const { worker, listeners } = loadWorker(data, null, true);
+  await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
+    issue: { number: 7, html_url: github.url, title: 'After', state: 'closed', assignees: [{ login: 'YSsolo' }], milestone: { number: 1 }, updated_at: '2026-10-13T01:00:00Z' } });
+  assert.equal(data['pm/tasks/t1'].title, 'After');
+  assert.equal(data['pm/tasks/t1'].status, 'done');
+  assert.equal(data['pm/tasks/t1'].dueDate, '2026-10-13');
+  await worker.applyMilestoneWebhook({ expectedRecordId: 'm1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
+    milestone: { number: 1, title: 'After', state: 'open', due_on: '2026-10-17T00:00:00Z', updated_at: '2026-10-13T01:00:00Z' } });
+  assert.equal(data['pm/milestones/m1'].name, 'After');
+  assert.equal(data['pm/milestones/m1'].dueDate, '2026-10-17');
+  assert.equal(data['pm/milestones/m1'].status, 'open');
+  assert.equal(data['pm/milestones/m1'].successCriteria, 'LOCAL_ONLY');
+  assert.equal(listeners.size, 0);
+});
 
 test('Task synchronization rejects a foreign-Project Milestone before any external request or write', async () => {
   const milestone = { id: 'foreign', projectId: 'other', name: 'Other Milestone', status: 'open' };

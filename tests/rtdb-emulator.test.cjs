@@ -32,6 +32,45 @@ function legacy() {
 }
 const seed = value => environment.withSecurityRulesDisabled(context => context.database().ref().set(value));
 
+test('native server SDK applies external changes from a cold transaction cache', { timeout: 20000 }, async () => {
+  const task = { id: 't1', projectId: 'p1', milestoneId: 'm1', title: 'Before', status: 'todo', assignees: ['山口'],
+    dueDate: '2026-10-13', updatedAt: 'r1', syncStatus: 'synced', github: { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' } };
+  const milestone = { id: 'm1', projectId: 'p1', name: 'Before', status: 'open', updatedAt: 'r1', syncStatus: 'synced',
+    successCriteria: 'LOCAL_ONLY', github: { number: 1 } };
+  await seed({ pm: { tasks: { t1: task }, milestones: { m1: milestone }, projects: { p1: { github: { owner: 'YSsolo', repo: 'repo' } } } } });
+  const admin = require('../functions/node_modules/firebase-admin');
+  const app = admin.initializeApp({ projectId, databaseURL: `https://${projectId}.firebaseio.com`,
+    credential: { getAccessToken: async () => { throw new Error('REAL_CREDENTIALS_FORBIDDEN'); } } }, 'cold-cache-server');
+  try {
+    const db = app.database();
+    const exported = {};
+    const filename = path.resolve(__dirname, '../functions/index.js');
+    vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { exports: exported, process: { env: {} }, console, Date, Buffer,
+      require: name => {
+        if (name === 'firebase-admin') return { apps: [1], database: () => db };
+        if (name === 'firebase-functions/v2/https') return { onRequest: (_, handler) => handler };
+        if (name === 'firebase-functions/v2/scheduler') return { onSchedule: (_, handler) => handler };
+        if (name === 'firebase-functions/params') return { defineSecret: () => ({ value: () => null }) };
+        if (name === 'cors') return () => (_, __, callback) => callback();
+        if (name === 'crypto') return crypto;
+        return require(path.resolve(path.dirname(filename), name));
+      } }, { filename });
+    const worker = exported.workspaceWorker;
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
+      issue: { number: 7, html_url: task.github.url, title: 'After', state: 'closed', assignees: [{ login: 'YSsolo' }], milestone: { number: 1 }, updated_at: '2026-10-13T01:00:00Z' } });
+    await worker.applyMilestoneWebhook({ expectedRecordId: 'm1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
+      milestone: { number: 1, title: 'After', state: 'open', due_on: '2026-10-17T00:00:00Z', updated_at: '2026-10-13T01:00:00Z' } });
+    const result = (await db.ref('pm').get()).val();
+    assert.equal(result.tasks.t1.title, 'After');
+    assert.equal(result.tasks.t1.status, 'done');
+    assert.equal(result.tasks.t1.dueDate, '2026-10-13');
+    assert.equal(result.milestones.m1.name, 'After');
+    assert.equal(result.milestones.m1.dueDate, '2026-10-17');
+    assert.equal(result.milestones.m1.status, 'open');
+    assert.equal(result.milestones.m1.successCriteria, 'LOCAL_ONLY');
+  } finally { await app.delete(); }
+});
+
 // Only DOM/session boundaries are stubbed. Database callbacks, commits,
 // authentication claims and Rules validation use the real Firebase SDK/emulator.
 function application(db) {
