@@ -4,6 +4,7 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
 const { mergeExternalRevision } = require('./sync-revision.cjs');
+const { recordTransaction } = require('./record-transaction.cjs');
 const ALLOWED_ORIGINS = new Set([
   'https://viaglyph-workspace.web.app',
   'https://viaglyph-workspace.firebaseapp.com'
@@ -406,18 +407,7 @@ function validWebhook(req) {
 }
 
 async function applyExternalRevision(ref, expectedUpdatedAt, patch) {
-  // get() does not populate the transaction cache. A first value event does;
-  // otherwise the initial null cache aborts a guarded transaction immediately.
-  let listener;
-  try {
-    await new Promise((resolve, reject) => {
-      listener = () => resolve();
-      ref.on('value', listener, reject);
-    });
-    return await ref.transaction(current => mergeExternalRevision(current, expectedUpdatedAt, patch), undefined, false);
-  } finally {
-    ref.off('value', listener);
-  }
+  return recordTransaction(ref, current => mergeExternalRevision(current, expectedUpdatedAt, patch));
 }
 
 async function applyIssueWebhook(payload) {

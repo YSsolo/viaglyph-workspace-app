@@ -32,6 +32,7 @@ jobs:
       - run: node --test tests/sync-error-redaction.test.cjs
       - run: node --test tests/actions-secrets.test.cjs
       - run: node --test tests/actions-scope.test.cjs
+      - run: node --test tests/record-transaction.test.cjs
       - run: node --test tests/sync-record-target.test.cjs
       - run: node --test tests/acceptance-workflow.test.cjs
       - run: node --test tests/worker-wif-runtime.test.cjs

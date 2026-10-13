@@ -1,5 +1,6 @@
 // Credentials are supplied by GitHub Actions OIDC / Secrets, never by the browser.
 const { workspaceWorker: worker } = require('../functions');
+const { recordTransaction } = require('../functions/record-transaction.cjs');
 const stamp = () => new Date().toISOString();
 
 async function reconcile() {
@@ -30,7 +31,7 @@ async function reconcile() {
           const { owner, repo } = project.github;
           const external = await worker.github(owner, `/repos/${owner}/${repo}/${collection === 'tasks' ? 'issues' : 'milestones'}/${record.github.number}`);
           const latest = (await ref.get()).val();
-          if (latest.updatedAt !== record.updatedAt || ['pending', 'error'].includes(latest.syncStatus)) continue;
+          if (!latest || latest.updatedAt !== record.updatedAt || ['pending', 'error'].includes(latest.syncStatus)) continue;
           if (!record.externalUpdatedAt || external.updated_at > record.externalUpdatedAt) {
             await pull({ [collection === 'tasks' ? 'issue' : 'milestone']: external, expectedRecordId: record.id, expectedUpdatedAt: record.updatedAt, repository: { full_name: `${owner}/${repo}` } });
           }
@@ -39,7 +40,11 @@ async function reconcile() {
         failures++;
         // Transport exceptions may echo Authorization headers. Never persist
         // exception text into member-readable database records.
-        await ref.update({ syncStatus: 'error', lastError: 'GitHub同期に失敗しました。連携設定を確認して再同期してください。', lastAttemptAt: stamp() });
+        await recordTransaction(ref, current => {
+          if (!current) return undefined;
+          if (current.updatedAt !== record.updatedAt) return current;
+          return { ...current, syncStatus: 'error', lastError: 'GitHub同期に失敗しました。連携設定を確認して再同期してください。', lastAttemptAt: stamp() };
+        });
         // Do not print tokens, request headers, or remote response bodies.
         console.error(`Synchronization failed: ${collection}/${record.id}`);
       }

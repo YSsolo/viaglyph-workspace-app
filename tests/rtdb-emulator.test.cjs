@@ -32,6 +32,22 @@ function legacy() {
 }
 const seed = value => environment.withSecurityRulesDisabled(context => context.database().ref().set(value));
 
+function nativeWorker(db) {
+  const exported = {};
+  const filename = path.resolve(__dirname, '../functions/index.js');
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { exports: exported, process: { env: {} }, console, Date, Buffer,
+    require: name => {
+      if (name === 'firebase-admin') return { apps: [1], database: () => db };
+      if (name === 'firebase-functions/v2/https') return { onRequest: (_, handler) => handler };
+      if (name === 'firebase-functions/v2/scheduler') return { onSchedule: (_, handler) => handler };
+      if (name === 'firebase-functions/params') return { defineSecret: () => ({ value: () => null }) };
+      if (name === 'cors') return () => (_, __, callback) => callback();
+      if (name === 'crypto') return crypto;
+      return require(path.resolve(path.dirname(filename), name));
+    } }, { filename });
+  return exported.workspaceWorker;
+}
+
 test('native server SDK applies external changes from a cold transaction cache', { timeout: 20000 }, async () => {
   const task = { id: 't1', projectId: 'p1', milestoneId: 'm1', title: 'Before', status: 'todo', assignees: ['山口'],
     dueDate: '2026-10-13', updatedAt: 'r1', syncStatus: 'synced', github: { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' } };
@@ -43,19 +59,7 @@ test('native server SDK applies external changes from a cold transaction cache',
     credential: { getAccessToken: async () => { throw new Error('REAL_CREDENTIALS_FORBIDDEN'); } } }, 'cold-cache-server');
   try {
     const db = app.database();
-    const exported = {};
-    const filename = path.resolve(__dirname, '../functions/index.js');
-    vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { exports: exported, process: { env: {} }, console, Date, Buffer,
-      require: name => {
-        if (name === 'firebase-admin') return { apps: [1], database: () => db };
-        if (name === 'firebase-functions/v2/https') return { onRequest: (_, handler) => handler };
-        if (name === 'firebase-functions/v2/scheduler') return { onSchedule: (_, handler) => handler };
-        if (name === 'firebase-functions/params') return { defineSecret: () => ({ value: () => null }) };
-        if (name === 'cors') return () => (_, __, callback) => callback();
-        if (name === 'crypto') return crypto;
-        return require(path.resolve(path.dirname(filename), name));
-      } }, { filename });
-    const worker = exported.workspaceWorker;
+    const worker = nativeWorker(db);
     await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
       issue: { number: 7, html_url: task.github.url, title: 'After', state: 'closed', assignees: [{ login: 'YSsolo' }], milestone: { number: 1 }, updated_at: '2026-10-13T01:00:00Z' } });
     await worker.applyMilestoneWebhook({ expectedRecordId: 'm1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
@@ -70,6 +74,77 @@ test('native server SDK applies external changes from a cold transaction cache',
     assert.equal(result.milestones.m1.successCriteria, 'LOCAL_ONLY');
   } finally { await app.delete(); }
 });
+
+for (const scenario of ['edit-during-push', 'delete-during-pull', 'delete-on-pull-failure', 'edit-on-pull-failure']) {
+  test(`native Actions preserves concurrent data: ${scenario}`, { timeout: 20000 }, async () => {
+    const task = { id: 't1', projectId: 'p1', milestoneId: 'm1', title: 'Before', status: 'todo', assignees: ['山口'],
+      dueDate: '2026-10-13', updatedAt: 'r1', syncStatus: scenario === 'edit-during-push' ? 'pending' : 'synced',
+      github: { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' }, externalUpdatedAt: '2026-10-13T00:00:00Z' };
+    await seed({ pm: { tasks: { t1: task }, projects: { p1: { github: { owner: 'YSsolo', repo: 'repo' } } },
+      milestones: { m1: { id: 'm1', projectId: 'p1', name: 'Milestone', status: 'open', syncStatus: 'synced', updatedAt: 'r1',
+        github: { number: 1 }, externalUpdatedAt: '2026-10-13T01:00:00Z' } } } });
+    const admin = require('../functions/node_modules/firebase-admin');
+    const app = admin.initializeApp({ projectId, databaseURL: `https://${projectId}.firebaseio.com`,
+      credential: { getAccessToken: async () => { throw new Error('REAL_CREDENTIALS_FORBIDDEN'); } } }, `actions-${scenario}`);
+    try {
+      const db = app.database();
+      const revisions = [];
+      const reference = db.ref.bind(db);
+      db.ref = (...args) => {
+        const ref = reference(...args);
+        if (args[0] === 'pm/tasks/t1') {
+          const transact = ref.transaction.bind(ref);
+          ref.transaction = (update, ...options) => transact(current => {
+            revisions.push(current?.updatedAt || null);
+            return update(current);
+          }, ...options);
+        }
+        return ref;
+      };
+      const edit = () => environment.withSecurityRulesDisabled(context => context.database().ref('pm/tasks/t1')
+        .update({ title: 'Newer edit', updatedAt: 'r-next', syncStatus: 'pending' }));
+      let finish;
+      const finished = new Promise(resolve => { finish = resolve; });
+      const worker = { ...nativeWorker(db), shutdown: async () => finish(),
+        syncTaskRecord: async () => {
+          assert.equal(scenario, 'edit-during-push');
+          await edit();
+          await db.ref('pm/tasks/t1').update({ syncStatus: 'synced' });
+        },
+        github: async (_, resource) => {
+          if (resource.includes('/milestones/')) return { updated_at: '2026-10-13T01:00:00Z' };
+          if (scenario.startsWith('delete')) {
+            await environment.withSecurityRulesDisabled(context => context.database().ref('pm/tasks/t1').remove());
+          } else if (scenario === 'edit-on-pull-failure') await edit();
+          if (scenario.endsWith('failure')) throw new Error('SYNTHETIC_TRANSPORT_FAILURE');
+          return { number: 7, html_url: task.github.url, title: 'External title', state: 'open', assignees: [{ login: 'YSsolo' }],
+            milestone: { number: 1 }, updated_at: '2026-10-13T01:00:00Z' };
+        }
+      };
+      const runtimeProcess = { env: { WORKSPACE_SYNC_PROJECT_ID: 'p1', WORKSPACE_SEND_DIGEST: 'false' }, exitCode: 0 };
+      const filename = path.resolve(__dirname, '../scripts/actions-sync.cjs');
+      vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { process: runtimeProcess, console: { error() {} }, Date,
+        require: name => name === '../functions' ? { workspaceWorker: worker }
+          : require(path.resolve(path.dirname(filename), name)) }, { filename });
+      await finished;
+      const result = await environment.withSecurityRulesDisabled(context => context.database().ref('pm').get());
+      const state = result.val();
+      if (scenario.startsWith('delete')) assert.equal(state.tasks?.t1, undefined);
+      else {
+        assert.equal(state.tasks.t1.title, 'Newer edit');
+        assert.equal(state.tasks.t1.updatedAt, 'r-next');
+        assert.equal(state.tasks.t1.syncStatus, 'pending');
+        assert.equal(state.tasks.t1.dueDate, '2026-10-13');
+        assert.equal(state.tasks.t1.lastError, undefined);
+        assert.ok(revisions.includes('r-next'), 'the actual native transaction must evaluate the newer revision');
+      }
+      const failures = scenario.endsWith('failure') ? 1 : 0;
+      assert.equal(state.acceptanceRuns.p1.failures, failures);
+      assert.equal(runtimeProcess.exitCode, failures);
+      assert.equal(state.integration, undefined);
+    } finally { await app.delete(); }
+  });
+}
 
 // Only DOM/session boundaries are stubbed. Database callbacks, commits,
 // authentication claims and Rules validation use the real Firebase SDK/emulator.

@@ -15,7 +15,13 @@ test('Actions stores a safe failure, never the transport exception or credential
     db: { ref: target => ({
       get: async () => ({ val: () => target === 'pm/tasks'
         ? { t1: { id: 't1', syncStatus: 'pending' } } : {} }),
-      update: async patch => { writes.push({ target, patch }); }
+      update: async patch => { writes.push({ target, patch }); },
+      on: (_, listener) => queueMicrotask(() => listener({ val: () => ({ id: 't1', syncStatus: 'pending' }) })),
+      off: () => {},
+      transaction: async update => {
+        const patch = update({ id: 't1', syncStatus: 'pending' });
+        if (patch !== undefined) writes.push({ target, patch });
+      }
     }) },
     syncMilestoneRecord: async () => {},
     syncTaskRecord: async () => { throw new TypeError(`Invalid header: Bearer ${credential}`); }
