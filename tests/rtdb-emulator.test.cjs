@@ -80,6 +80,25 @@ test('native server SDK applies external changes from a cold transaction cache',
     assert.equal(reopened.status, 'todo');
     assert.equal(reopened.completedAt, undefined, 'native RTDB null writes remove completion timestamp');
     assert.equal(reopened.dueDate, '2026-10-13');
+    const firstObservation = Date.now();
+    const reviewIssue = { number: 7, html_url: task.github.url, title: 'Review', state: 'open',
+      labels: [{ name: 'workspace:review' }], assignees: [{ login: 'YSsolo' }], updated_at: '2026-10-14T02:00:00Z' };
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: reopened.updatedAt,
+      repository: { full_name: 'YSsolo/repo' }, issue: reviewIssue });
+    const review = (await db.ref('pm/tasks/t1').get()).val();
+    assert.equal(review.status, 'review');
+    assert.ok(Date.parse(review.reviewStartedAt) >= firstObservation);
+    assert.ok(Date.parse(review.reviewStartedAt) <= Date.now());
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: review.updatedAt,
+      repository: { full_name: 'YSsolo/repo' }, issue: { ...reviewIssue, title: 'Review edit' } });
+    const editedReview = (await db.ref('pm/tasks/t1').get()).val();
+    assert.equal(editedReview.title, 'Review edit');
+    assert.equal(editedReview.reviewStartedAt, review.reviewStartedAt);
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: editedReview.updatedAt,
+      repository: { full_name: 'YSsolo/repo' }, issue: { ...reviewIssue, labels: [{ name: 'workspace:todo' }] } });
+    const leftReview = (await db.ref('pm/tasks/t1').get()).val();
+    assert.equal(leftReview.status, 'todo');
+    assert.equal(leftReview.reviewStartedAt, undefined);
   } finally { await app.delete(); }
 });
 
