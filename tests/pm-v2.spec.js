@@ -313,6 +313,7 @@ test('Canvas saves one formal Task and durably links its source block', async ({
   expect(task.value).toMatchObject({ sourceMeetingId: 'meeting-001', status: 'backlog', title: '会議の正式アクション' });
   expect(result.writes.find(w => w.path === 'canvases/meeting-001/blocks/block-001').value).toMatchObject({ type: 'goal-task', meta: { taskId: task.value.id, pm: true } });
   expect(result.alerts).toEqual([]);
+  await expect(page.locator('#toast')).toContainText('正式Taskを作成し、GitHub同期を開始しました');
 });
 
 test('Canvas link retry keeps the Task ID after a block write fails', async ({ page }) => {

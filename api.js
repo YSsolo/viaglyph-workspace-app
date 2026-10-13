@@ -3,7 +3,11 @@
 // ─── FIREBASE GLOBAL INITIALIZATION ───
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDS4v9y0FnUvY5MFxtypkWrrSAH8GMUCLY",
-  authDomain: "viaglyph-workspace.firebaseapp.com",
+  // Redirect auth helpers must share the production app's origin. Other hosts
+  // (including localhost) use the configured Firebase provider domain.
+  authDomain: typeof location !== 'undefined' && location.hostname === 'viaglyph-workspace.web.app'
+    ? 'viaglyph-workspace.web.app'
+    : 'viaglyph-workspace.firebaseapp.com',
   databaseURL: "https://viaglyph-workspace-default-rtdb.firebaseio.com",
   projectId: "viaglyph-workspace",
   storageBucket: "viaglyph-workspace.firebasestorage.app",

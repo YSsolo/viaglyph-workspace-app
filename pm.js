@@ -297,15 +297,25 @@
           ? 'このGitHubアカウントにはWorkspaceの利用権限がありません。'
           : code === 'WORKSPACE_INTEGRATION_UNAVAILABLE'
             ? 'Workspace連携の設定が未完了です。管理者に連絡してください。'
-            : error?.message || 'GitHubログインを完了できませんでした。';
+            : 'GitHubログインを完了できませんでした。再試行してください。';
     errorEl.textContent = message;
     errorEl.style.display = 'block';
   }
 
-  async function completeGitHubLogin(user, profile = {}) {
-    const githubId = String(profile.id || user.providerData?.find(p => p.providerId === 'github.com')?.uid || '');
+  let authGeneration = 0;
+
+  async function completeGitHubLogin(user, profile = {}, expectedGeneration) {
+    const isCurrent = () => firebase.auth().currentUser?.uid === user.uid &&
+      (expectedGeneration === undefined || expectedGeneration === authGeneration);
+    if (!isCurrent()) return;
+    const githubId = String(user.providerData?.find(p => p.providerId === 'github.com')?.uid || '');
     const short = ALLOWED_GITHUB_IDS[githubId];
-    if (!short) { await firebase.auth().signOut(); throw new Error('このGitHubアカウントはViaGLYPH Workspaceの許可リストにありません。'); }
+    if (!short) {
+      await firebase.auth().signOut();
+      const error = new Error('GitHubアカウントが許可リストにありません。');
+      error.code = 'workspace/forbidden';
+      throw error;
+    }
     let sessionMode = window.WORKSPACE_SYNC_MODE === 'actions' ? 'actions' : 'server';
     try {
       if (sessionMode !== 'actions') {
@@ -319,6 +329,9 @@
       if (!['workspace/api-unreachable', 'workspace/api-not-deployed'].includes(error.code)) throw error;
       sessionMode = 'direct';
     }
+    // A sign-out or account switch while the server responds must not reopen
+    // the previous user's Workspace.
+    if (!isCurrent()) return;
     const session = { githubId, githubLogin: profile.login || MEMBERS[short].github, short, name: short, emoji: MEMBERS[short].emoji, sessionMode };
     localStorage.setItem('vg_session', JSON.stringify(session)); currentUser = short;
     document.getElementById('user-display').textContent = `${session.emoji} ${short}`;
@@ -344,7 +357,7 @@
       sessionStorage.setItem('vg_github_redirect_pending', '1');
       await firebase.auth().signInWithRedirect(provider);
     } catch (error) {
-      console.error('ViaGLYPH GitHub sign-in failed', error);
+      console.error('ViaGLYPH GitHub sign-in failed');
       sessionStorage.removeItem('vg_github_redirect_pending');
       showLoginError(error);
     }
@@ -366,29 +379,45 @@
   window.addTask = () => PM.saveTask();
   window.setCtx = () => {};
 
+  function clearWorkspaceSession() {
+    PM.detach();
+    API.detachRealtimeListeners?.();
+    localStorage.removeItem('vg_session');
+    currentUser = null;
+    PM.state = { projects: {}, milestones: {}, tasks: {}, settings: {}, ready: false, migration: null };
+    document.getElementById('login-screen')?.classList.remove('hidden');
+    const app = document.getElementById('app');
+    if (app) app.style.display = 'none';
+    const display = document.getElementById('user-display');
+    if (display) display.textContent = '';
+    document.querySelectorAll('.modal-overlay.open').forEach(modal => modal.classList.remove('open'));
+  }
+
   firebase.auth?.().onAuthStateChanged(async user => {
-    if (!user) { PM.detach(); return; }
-    const session = API.getSession?.();
-    if (session) {
-      currentUser = session.short;
-      document.getElementById('login-screen')?.classList.add('hidden');
-      document.getElementById('app').style.display = 'flex';
-      PM.attach();
+    const generation = ++authGeneration;
+    clearWorkspaceSession();
+    if (!user) return;
+    try {
+      await completeGitHubLogin(user, {}, generation);
+    } catch (error) {
+      if (generation !== authGeneration) return;
+      clearWorkspaceSession();
+      showLoginError(error);
     }
   });
 
-  // Process OAuth only after the redirect result exists. The auth observer must
-  // not open the workspace before the server-side member claim is refreshed.
+  // Both resumed sessions and redirect results revalidate the signed identity.
+  // Server mode waits for the member claim; Actions mode is guarded by RTDB Rules.
   (async function completeRedirectLogin() {
     if (!firebase.auth) return;
     try {
       const result = await firebase.auth().getRedirectResult();
       if (!result?.user || !sessionStorage.getItem('vg_github_redirect_pending')) return;
       sessionStorage.removeItem('vg_github_redirect_pending');
-      await completeGitHubLogin(result.user, result.additionalUserInfo?.profile || {});
+      await completeGitHubLogin(result.user, result.additionalUserInfo?.profile || {}, authGeneration);
     } catch (error) {
       sessionStorage.removeItem('vg_github_redirect_pending');
-      console.error('ViaGLYPH GitHub redirect sign-in failed', error);
+      console.error('ViaGLYPH GitHub redirect sign-in failed');
       showLoginError(error);
     }
   })();

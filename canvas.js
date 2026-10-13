@@ -1053,7 +1053,10 @@ function showTaskModal(idx) {
 function closeCanvasTaskModal() {
   document.getElementById('canvas-task-modal').classList.remove('open');
   if (currentTaskTargetIdx >= 0 && canvasBlocks[currentTaskTargetIdx]) {
-    focusBlock(canvasBlocks[currentTaskTargetIdx].key);
+    const key = canvasBlocks[currentTaskTargetIdx].key;
+    const block = document.getElementById('canvas-blocks')?.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    const target = block?.matches('[contenteditable="true"]') ? block : block?.querySelector('[contenteditable="true"]');
+    target?.focus();
   }
 }
 

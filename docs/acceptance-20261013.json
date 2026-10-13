@@ -1,0 +1,48 @@
+{
+  "dateJst": "2026-10-13",
+  "overallStatus": "incomplete",
+  "mode": "Firebase Spark and GitHub Actions",
+  "liveEvidence": {
+    "googleAdminAccount": "specified account confirmed in Firebase console",
+    "firebaseappComGitHubLogin": "real approved GitHub user reached Dashboard as 山口",
+    "webAppGitHubLogin": "returned to login screen before the same-origin auth correction; post-correction deployment and acceptance are pending",
+    "project": "受入テスト 2026-10-13 was saved through the authenticated browser and appeared in the Project list",
+    "milestone": "受入確認：会議→Task→進捗 was saved and the Project showed one open Milestone",
+    "canvas": "受入テスト会議 2026-10-13 was created, /task opened the formal Task dialog",
+    "canvasTask": "受入テスト：会議から正式Task saved without owner/date as Backlog and the Canvas displayed its linked Project/Milestone; a subsequent UI error was reproduced and fixed locally",
+    "unauthenticatedDatabase": "live PM, Canvas and Work Log reads rejected with HTTP 401/403",
+    "invalidDatabaseToken": "live request with a synthetic invalid token rejected; this is not proof of a genuinely signed expired-token case",
+    "publicDevelopmentPaths": "six sampled development/configuration paths returned 404",
+    "browserControl": "intermittent browser-control setup/input timeouts; do not infer application failure or operation success from these timeouts"
+  },
+  "localVerification": {
+    "pmBrowserSuite": { "passed": 18, "file": "tests/pm-v2.spec.js", "scope": "local UI with injected identity and controlled data/writes, not real OAuth or Issue/Slack acceptance" },
+    "authSession": { "passed": 7, "file": "tests/auth-session.test.cjs", "scope": "SDK observer-boundary harness; signed identity selection, auth-loss cleanup, stale request ordering and provider error redaction" },
+    "authDomain": { "passed": 3, "file": "tests/auth-domain.test.cjs" },
+    "hostingSecurity": { "passed": 3, "file": "tests/hosting-security.test.cjs" },
+    "syncRevision": { "passed": 4, "file": "tests/sync-revision.test.cjs", "scope": "revision merge logic, not external GitHub polling" },
+    "liveAccessRejection": { "passed": 2, "file": "tests/live-public-access.test.cjs" },
+    "rulesStructuralChecks": { "passed": 21, "file": "tests/m5-challenge-rules.js", "scope": "structural/synthetic evaluator, not Firebase emulator" },
+    "independentReview": "bounded auth-domain/session and Canvas false-error correction passed read-only review; this does not establish overall completion"
+  },
+  "deploymentState": {
+    "corrections": "local candidate only at receipt creation",
+    "githubOAuthCallback": "exact web.app handler prepared but not saved; awaiting action-time user confirmation; existing firebaseapp.com handler retained and wildcard matching disabled",
+    "githubSecrets": "only OIDC provider and service account metadata observed; owner PAT and replacement Slack token absent",
+    "scheduledWorker": "workspace-sync workflow not registered on the default branch at the latest readback"
+  },
+  "remainingAcceptance": [
+    "OAuth callback save/readback, Firebase authorized-domain confirmation, deployment and real web.app sign-in/resume/logout",
+    "actual approved/unauthorized/expired-member RTDB access matrix",
+    "formal Task/Milestone CRUD and all required dashboard dates/health/summary behavior",
+    "real Canvas link error-free readback and deleted-meeting Task retention",
+    "owner-scoped PAT setup, Actions execution and real Issue/Milestone two-way synchronization",
+    "GitHub failure, token expiry, interrupted delivery/retry and external update ordering",
+    "manual Milestone approval reflected in GitHub and Dashboard",
+    "Work Log persistence/reference readback and migration duplicate/conflict/backup/reference correctness",
+    "multi-browser updates with measured convergence within three seconds",
+    "replacement Slack credential/channel setup and real digest delivery/deduplication",
+    "staging acceptance, CI deployment identity/health gates, then production promotion",
+    "current public-path containment must remain enforced; historical external access/copies remain unprovable"
+  ]
+}
