@@ -53,6 +53,8 @@ test('Migration preview identifies projects, milestones and tasks without writin
     window.goals = [{ id: 1, name: '旧Project', bigGoals: [{ id: 2, name: '旧Milestone', midGoals: [{ id: 3, name: '旧グループ', tasks: [{ id: 4, name: '旧Task', done: false, assign: '山口' }] }] }] }];
     window.DATA = { dev: { tasks: [] }, biz: { tasks: [] } };
     window.localTasks = [];
+    const legacy = { goals: window.goals, tasks: { dev: {}, biz: {} }, workLogs: {} };
+    window.firebaseDb = { ref: path => ({ get: async () => ({ val: () => legacy[path] }) }) };
   });
   await page.evaluate(() => window.PM.openMigration());
   await expect(page.locator('#pm-migration-preview')).toContainText('1 Project、1 Milestone、1 Task');

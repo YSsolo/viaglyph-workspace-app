@@ -269,15 +269,153 @@
       page.insertAdjacentHTML('afterbegin', `<div class="glass-card" id="pm-settings-card" style="margin-bottom:16px"><h3 style="margin-top:0">PM運用</h3><p class="pm-muted">共通Slackチャンネルには、平日9:00（JST）に期限超過・直近期限・Blocked・Review停滞・同期失敗を通知します。</p><div class="form-group"><label class="form-label">共通SlackチャンネルID</label><input class="form-input" id="pm-slack-channel" placeholder="C0123456789"/></div><button class="pm-btn pm-btn-primary" onclick="PM.savePmSettings()">PM設定を保存</button><button class="pm-btn" onclick="PM.openMigration()">旧データ移行プレビュー</button></div>`);
     },
     async savePmSettings() { await this.update('pm/settings', { slackChannel: document.getElementById('pm-slack-channel').value.trim(), timezone: 'Asia/Tokyo', digestWeekdaysOnly: true, digestHour: 9, ...this.metadata() }); toast('PM設定を保存しました'); },
-    migrationPreview() {
-      const legacyGoals = Array.isArray(window.goals) ? window.goals : []; const legacyTasks = [...(window.DATA?.dev?.tasks || []), ...(window.DATA?.biz?.tasks || []), ...(window.localTasks || [])];
-      const projects = []; const milestones = []; const tasks = []; const duplicates = []; const seen = new Map();
-      legacyGoals.forEach(project => { const projectId = uid(); projects.push({ id: projectId, name: project.name, status: project.status || 'active', github: { owner: '', repo: '' }, migrated: true }); (project.bigGoals || []).forEach(big => { const milestoneId = uid(); milestones.push({ id: milestoneId, projectId, name: big.name, dueDate: big.due || '', successCriteria: '', status: 'open', migrated: true }); (big.midGoals || []).forEach(mid => (mid.tasks || []).forEach(item => { const assignees = Array.isArray(item.assign) ? item.assign : (item.assign ? [item.assign] : []); const task = { id: uid(), projectId, milestoneId, title: item.name, status: item.done ? 'done' : 'backlog', assignees, dueDate: item.due || '', priority: 'medium', legacyGroup: mid.name, migrated: true }; const key = `${task.title.trim().toLowerCase()}|${assignees.join(',')}`; seen.set(key, task); tasks.push(task); })); }); });
-      legacyTasks.forEach(old => { const assignees = old.assign ? [old.assign] : []; const key = `${String(old.title || '').trim().toLowerCase()}|${assignees.join(',')}`; if (seen.has(key)) { const task = seen.get(key); const oldStatus = ({ TODO:'todo', WIP:'in_progress', Review:'review', Blocked:'blocked', Done:'done' })[old.status] || 'backlog'; const oldDue = /^\d{4}-\d{2}-\d{2}$/.test(old.due || '') ? old.due : ''; duplicates.push({ legacy: old, task, conflict: task.status !== oldStatus || task.dueDate !== oldDue }); return; } const projectName = old.ctx === 'dev' ? '未分類（開発）' : '未分類（一般）'; let project = projects.find(p => p.name === projectName); if (!project) { project = { id: uid(), name: projectName, status: 'active', github: { owner: '', repo: '' }, migrated: true, needsConfiguration: true }; projects.push(project); } let milestone = milestones.find(m => m.projectId === project.id && m.name === 'Backlog'); if (!milestone) { milestone = { id: uid(), projectId: project.id, name: 'Backlog', dueDate: '', successCriteria: '', status: 'open', migrated: true }; milestones.push(milestone); } tasks.push({ id: uid(), projectId: project.id, milestoneId: milestone.id, title: old.title, status: ({ TODO:'todo', WIP:'in_progress', Review:'review', Blocked:'blocked', Done:'done' })[old.status] || 'backlog', assignees, dueDate: /^\d{4}-\d{2}-\d{2}$/.test(old.due || '') ? old.due : '', priority: ({ 高:'high', 中:'medium', 低:'low' })[old.prio] || 'medium', legacyTaskId: old.id, migrated: true }); });
-      return { projects, milestones, tasks, duplicates };
+    async readLegacySnapshot() {
+      if (!window.firebaseDb) throw new Error('Realtime Database is unavailable');
+      const [goals, tasks, logs] = await Promise.all(['goals', 'tasks', 'workLogs'].map(path => window.firebaseDb.ref(path).get()));
+      return { goals: goals.val() || {}, tasks: tasks.val() || {}, workLogs: logs.val() || {} };
     },
-    openMigration() { const data = this.migrationPreview(); this.state.migration = data; const el = document.getElementById('pm-migration-preview'); el.innerHTML = `<div class="pm-migration-group"><h4>変換対象</h4><p>${data.projects.length} Project、${data.milestones.length} Milestone、${data.tasks.length} Task</p></div><div class="pm-migration-group"><h4>重複候補</h4>${data.duplicates.length ? data.duplicates.map((d, i) => d.conflict ? `<label>${esc(d.legacy.title)} — 状態または期限が競合<select class="form-select" id="pm-migration-choice-${i}"><option value="formal">Goal Taskを採用</option><option value="legacy">看板Taskを採用</option></select></label>` : `<p>${esc(d.legacy.title)} — 既存Goal Taskへ統合</p>`).join('') : '<p>ありません</p>'}</div><div class="pm-migration-group"><h4>確認が必要なProject</h4>${data.projects.filter(p => p.needsConfiguration || !p.github.owner).map(p => `<p>${esc(p.name)}: GitHub owner/repositoryを移行後に設定してください。</p>`).join('') || '<p>ありません</p>'}</div><p class="pm-muted">旧データは削除せず、Realtime Databaseにバックアップしてから新しい <code>/pm</code> へ保存します。外部Issueはこの確認操作では作成しません。</p>`; this.openModal('pm-migration-modal'); },
-    async confirmMigration() { const data = this.state.migration; if (!data) return; data.duplicates.forEach((d, i) => { if (d.conflict && document.getElementById(`pm-migration-choice-${i}`)?.value === 'legacy') { d.task.status = ({ TODO:'todo', WIP:'in_progress', Review:'review', Blocked:'blocked', Done:'done' })[d.legacy.status] || 'backlog'; d.task.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(d.legacy.due || '') ? d.legacy.due : ''; d.task.priority = ({ 高:'high', 中:'medium', 低:'low' })[d.legacy.prio] || 'medium'; } }); data.tasks.forEach(t => { if (t.status !== 'backlog' && (!t.assignees?.length || !t.dueDate)) { t.status = 'backlog'; t.migrationNeedsScheduling = true; } }); const stamp = Date.now(); const updates = { [`migrationBackups/${stamp}`]: { createdAt: now(), tasks: window.DATA ? { dev: window.DATA.dev?.tasks || [], biz: window.DATA.biz?.tasks || [] } : {}, goals: window.goals || [], workLogs: window.workLogs || [] }, 'pm/schemaVersion': 2 }; const taskIdMap = new Map(data.tasks.filter(t => t.legacyTaskId !== undefined).map(t => [String(t.legacyTaskId), t.id])); Object.entries(window.workLogs || {}).forEach(([id, log]) => { const taskId = taskIdMap.get(String(log.taskId)); if (taskId) updates[`workLogs/${id}/taskId`] = taskId; }); data.projects.forEach(p => updates[`pm/projects/${p.id}`] = { ...p, createdAt: now(), ...this.metadata() }); data.milestones.forEach(m => updates[`pm/milestones/${m.id}`] = { ...m, syncStatus: 'pending', createdAt: now(), ...this.metadata() }); data.tasks.forEach(t => updates[`pm/tasks/${t.id}`] = { ...t, syncStatus: 'pending', createdAt: now(), ...this.metadata() }); await window.firebaseDb.ref().update(updates); this.closeModal('pm-migration-modal'); toast('バックアップを作成し、PM v2へ移行しました'); },
+    migrationPreview(legacySnapshot) {
+      const rows = value => Object.entries(value || {}).filter(([, item]) => item && typeof item === 'object').map(([key, item]) => ({ ...item, id: item.id ?? key }));
+      const legacyGoals = rows(legacySnapshot ? legacySnapshot.goals : window.goals);
+      const legacyTasks = legacySnapshot
+        ? [...rows(legacySnapshot.tasks.dev).map(t => ({ ...t, ctx: 'dev' })), ...rows(legacySnapshot.tasks.biz).map(t => ({ ...t, ctx: 'biz' }))]
+        : [...(window.DATA?.dev?.tasks || []), ...(window.DATA?.biz?.tasks || []), ...(window.localTasks || [])];
+      const projects = []; const milestones = []; const tasks = []; const duplicates = []; const seen = new Map();
+      legacyGoals.forEach(project => { const projectId = uid(); projects.push({ id: projectId, name: project.name, status: project.status || 'active', github: { owner: '', repo: '' }, migrated: true }); rows(project.bigGoals).forEach(big => { const milestoneId = uid(); milestones.push({ id: milestoneId, projectId, name: big.name, dueDate: big.due || '', successCriteria: '', status: 'open', migrated: true }); rows(big.midGoals).forEach(mid => rows(mid.tasks).forEach(item => { const assignees = Array.isArray(item.assign) ? item.assign : (item.assign ? [item.assign] : []); const task = { id: uid(), projectId, milestoneId, title: item.name, status: item.done ? 'done' : 'backlog', assignees, dueDate: item.due || '', priority: 'medium', legacyGroup: mid.name, migrated: true, ...(item.id !== undefined ? { legacyTaskId: item.id } : {}) }; const key = `${task.title.trim().toLowerCase()}|${assignees.join(',')}`; seen.set(key, [...(seen.get(key) || []), task]); tasks.push(task); })); }); });
+      legacyTasks.forEach(old => {
+        const assignees = old.assign ? [old.assign] : [];
+        const key = `${String(old.title || '').trim().toLowerCase()}|${assignees.join(',')}`;
+        if (seen.has(key)) {
+          const candidates = seen.get(key);
+          if (candidates.length !== 1) {
+            duplicates.push({ legacy: old, candidates, ambiguous: true });
+            return;
+          }
+          const task = candidates[0];
+          const oldStatus = ({ TODO:'todo', WIP:'in_progress', Review:'review', Blocked:'blocked', Done:'done' })[old.status] || 'backlog';
+          const oldDue = /^\d{4}-\d{2}-\d{2}$/.test(old.due || '') ? old.due : '';
+          duplicates.push({ legacy: old, task, conflict: task.status !== oldStatus || task.dueDate !== oldDue });
+          return;
+        }
+        let project = projects.find(p => p.name === '未分類');
+        if (!project) {
+          project = { id: uid(), name: '未分類', status: 'active', github: { owner: '', repo: '' }, migrated: true, needsConfiguration: true };
+          projects.push(project);
+        }
+        let milestone = milestones.find(m => m.projectId === project.id && m.name === 'Backlog');
+        if (!milestone) {
+          milestone = { id: uid(), projectId: project.id, name: 'Backlog', dueDate: '', successCriteria: '', status: 'open', migrated: true };
+          milestones.push(milestone);
+        }
+        tasks.push({ id: uid(), projectId: project.id, milestoneId: milestone.id, title: old.title, status: 'backlog', assignees, dueDate: /^\d{4}-\d{2}-\d{2}$/.test(old.due || '') ? old.due : '', priority: ({ 高:'high', 中:'medium', 低:'low' })[old.prio] || 'medium', legacyTaskId: old.id, legacyContext: old.ctx || '', legacyStatus: old.status || '', migrated: true });
+      });
+      return { projects, milestones, tasks, duplicates, ...(legacySnapshot ? { legacySnapshot } : {}) };
+    },
+    async openMigration() {
+      this.state.migration = null;
+      const previewEl = document.getElementById('pm-migration-preview');
+      if (previewEl) previewEl.innerHTML = '';
+      try {
+        const data = this.migrationPreview(await this.readLegacySnapshot());
+        this.state.migration = data;
+        const el = document.getElementById('pm-migration-preview');
+        el.innerHTML = `<div class="pm-migration-group"><h4>変換対象</h4><p>${data.projects.length} Project、${data.milestones.length} Milestone、${data.tasks.length} Task</p></div><div class="pm-migration-group"><h4>重複候補</h4>${data.duplicates.length ? data.duplicates.map((d, i) => d.ambiguous ? `<p>${esc(d.legacy.title)} — 複数のGoal Taskが該当します。旧データの重複を確認してからプレビューを再取得してください。</p>` : d.conflict ? `<label>${esc(d.legacy.title)} — 状態または期限が競合<select class="form-select" id="pm-migration-choice-${i}"><option value="formal">Goal Taskを採用</option><option value="legacy">看板Taskを採用</option></select></label>` : `<p>${esc(d.legacy.title)} — 既存Goal Taskへ統合</p>`).join('') : '<p>ありません</p>'}</div><div class="pm-migration-group"><h4>確認が必要なProject</h4>${data.projects.filter(p => p.needsConfiguration || !p.github.owner).map(p => `<p>${esc(p.name)}: GitHub owner/repositoryを移行後に設定してください。</p>`).join('') || '<p>ありません</p>'}</div><p class="pm-muted">旧データは削除せず、Realtime Databaseにバックアップしてから新しい <code>/pm</code> へ保存します。外部Issueはこの確認操作では作成しません。</p>`;
+        this.openModal('pm-migration-modal');
+      } catch (_) {
+        this.state.migration = null;
+        toast('移行データを取得できませんでした。接続を確認して再試行してください。');
+      }
+    },
+    async confirmMigration() {
+      const data = this.state.migration;
+      if (!data) return;
+      if (!data.legacySnapshot) return toast('移行プレビューを再取得してから確定してください。');
+      if (data.duplicates.some(d => d.ambiguous)) return toast('重複候補が複数あります。旧データを確認してプレビューを再取得してください。');
+      data.duplicates.forEach((d, i) => {
+        if (d.conflict && document.getElementById(`pm-migration-choice-${i}`)?.value === 'legacy') {
+          d.task.status = ({ TODO:'todo', WIP:'in_progress', Review:'review', Blocked:'blocked', Done:'done' })[d.legacy.status] || 'backlog';
+          d.task.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(d.legacy.due || '') ? d.legacy.due : '';
+          d.task.priority = ({ 高:'high', 中:'medium', 低:'low' })[d.legacy.prio] || 'medium';
+        }
+      });
+      data.tasks.forEach(t => {
+        if (t.status !== 'backlog' && (!t.assignees?.length || !t.dueDate)) {
+          t.status = 'backlog';
+          t.migrationNeedsScheduling = true;
+        }
+      });
+      const aliases = new Map();
+      const addAlias = (legacyId, taskId) => {
+        if (legacyId === undefined) return;
+        const key = String(legacyId);
+        const targets = aliases.get(key) || new Set();
+        targets.add(taskId);
+        aliases.set(key, targets);
+      };
+      data.tasks.forEach(t => addAlias(t.legacyTaskId, t.id));
+      // Both source IDs refer to the surviving formal Task after deduplication.
+      data.duplicates.forEach(d => {
+        addAlias(d.legacy.id, d.task.id);
+      });
+      if (Object.values(data.legacySnapshot.workLogs || {}).some(log => aliases.get(String(log.taskId))?.size > 1)) {
+        return toast('作業記録の旧Task IDが複数のTaskに一致します。旧データを確認してプレビューを再取得してください。');
+      }
+      const taskIdMap = new Map([...aliases].map(([key, targets]) => [key, [...targets][0]]));
+      const updates = { 'pm/schemaVersion': 2 };
+      Object.entries(data.legacySnapshot.workLogs || {}).forEach(([key, log]) => {
+        const taskId = taskIdMap.get(String(log.taskId));
+        if (taskId) updates[`workLogs/${key}/taskId`] = taskId;
+      });
+      data.projects.forEach(p => updates[`pm/projects/${p.id}`] = { ...p, createdAt: now(), ...this.metadata() });
+      data.milestones.forEach(m => updates[`pm/milestones/${m.id}`] = { ...m, syncStatus: 'pending', createdAt: now(), ...this.metadata() });
+      data.tasks.forEach(t => updates[`pm/tasks/${t.id}`] = { ...t, syncStatus: 'pending', createdAt: now(), ...this.metadata() });
+      const canonical = value => value && typeof value === 'object'
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+      const fingerprint = root => JSON.stringify(canonical({ goals: root?.goals || {}, tasks: root?.tasks || {}, workLogs: root?.workLogs || {} }));
+      const expectedSource = fingerprint(data.legacySnapshot);
+      const matches = root => root && Number(root.pm?.schemaVersion || 0) < 2 && fingerprint(root) === expectedSource;
+      const hasUnsafeLog = root => Object.values(data.legacySnapshot.workLogs || {}).some(log => {
+        const key = String(log.taskId);
+        const formalExists = Object.prototype.hasOwnProperty.call(root?.pm?.tasks || {}, key);
+        const mapped = taskIdMap.get(key);
+        // A shared scalar ID cannot distinguish an existing formal Task from
+        // a different legacy Task. Never give the legacy alias precedence.
+        return mapped ? formalExists && String(mapped) !== key : !formalExists;
+      });
+      const rootRef = window.firebaseDb.ref();
+      let observer;
+      // Keep a temporary value listener until completion so the transaction's
+      // initial input is a complete root, not an unpopulated local cache.
+      const ready = new Promise((resolve, reject) => {
+        observer = snapshot => resolve(snapshot.val());
+        rootRef.on('value', observer, reject);
+      });
+      try {
+        const observedRoot = await ready;
+        if (!matches(observedRoot)) return toast('移行対象が更新済み、または移行済みです。プレビューを再取得してください。');
+        if (hasUnsafeLog(observedRoot)) return toast('作業記録の参照先Taskを特定できません。旧データを確認してプレビューを再取得してください。');
+        data.backupId ||= uid();
+        await this.write(`migrationBackups/${data.backupId}`, { ...data.legacySnapshot, createdAt: now(), ...this.metadata() });
+        // Guard source, schema switch and Work Log relinking in ONE commit.
+        // RTDB retries with current data after any conflicting client write.
+        const result = await rootRef.transaction(current => {
+          if (!matches(current) || hasUnsafeLog(current)) return;
+          const next = JSON.parse(JSON.stringify(current));
+          Object.entries(updates).forEach(([path, value]) => {
+            const parts = path.split('/');
+            let parent = next;
+            parts.slice(0, -1).forEach(key => { parent = parent[key] ||= {}; });
+            parent[parts[parts.length - 1]] = value;
+          });
+          return next;
+        }, undefined, false);
+        if (!result.committed) return toast('移行対象が更新済み、または移行済みです。プレビューを再取得してください。');
+      } finally {
+        rootRef.off('value', observer);
+      }
+      this.closeModal('pm-migration-modal');
+      toast('バックアップを作成し、PM v2へ移行しました');
+    },
     legacyTask(task) { return { id: task.id, title: task.title, status: ({ backlog:'TODO', todo:'TODO', in_progress:'WIP', review:'Review', blocked:'Blocked', done:'Done' })[task.status] || 'TODO', assign: task.assignees?.[0] || '全員', due: task.dueDate || '随時', tags: [this.project(task.projectId)?.name || 'PM'], ctx: 'biz' }; }
   };
 

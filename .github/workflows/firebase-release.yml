@@ -32,6 +32,7 @@ jobs:
       - run: node --test tests/hosting-security.test.cjs
       - run: node --test tests/auth-domain.test.cjs
       - run: node --test tests/auth-session.test.cjs
+      - run: node --test tests/migration.test.cjs
       - run: node scripts/build-hosting.cjs
       - run: node --check pm.js && node --check api.js && node --check functions/index.js
 
