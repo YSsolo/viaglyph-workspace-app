@@ -95,7 +95,20 @@
       this.closeModal('pm-milestone-modal');
       this.syncMilestone(id).catch(() => {}); toast('Milestoneを保存しました');
     },
-    async saveTask(options) {
+    saveTask(options) {
+      if (options) return this.persistTask(options);
+      if (this.taskSavePromise) return this.taskSavePromise;
+      const button = document.getElementById('pm-task-save-button');
+      if (button) button.disabled = true;
+      this.taskSavePromise = this.persistTask().catch(() => {
+        toast('Taskを保存できませんでした。再試行してください。');
+      }).finally(() => {
+        this.taskSavePromise = null;
+        if (button) button.disabled = false;
+      });
+      return this.taskSavePromise;
+    },
+    async persistTask(options) {
       const source = options || {};
       const id = source.id || document.getElementById('pm-task-id').value || uid();
       const projectId = source.projectId || document.getElementById('pm-task-project').value;
@@ -109,6 +122,8 @@
       if (!projectId || !milestoneId || !title) return toast('タイトル、Project、Milestoneは必須です');
       if (status !== 'backlog' && (!assignees.length || !dueDate)) return toast('Todo以降は担当者と期限が必須です');
       if (!this.hasGitHub(this.project(projectId))) return toast('ProjectにGitHub repositoryを設定してください');
+      // Keep the creation ID across retries if a database acknowledgement is lost.
+      if (!options) document.getElementById('pm-task-id').value = id;
       const previous = this.task(id);
       const task = { ...(previous || {}), id, projectId, milestoneId, title, description, status, assignees, dueDate: dueDate || '', priority, sourceMeetingId: source.sourceMeetingId || previous?.sourceMeetingId || '', sourceMeetingDeleted: Boolean(previous?.sourceMeetingDeleted), createdAt: previous?.createdAt || now(), syncStatus: previous?.syncStatus === 'synced' ? 'pending' : (previous?.syncStatus || 'pending'), ...this.metadata() };
       await this.write(`pm/tasks/${id}`, task);

@@ -116,6 +116,48 @@ test('Task form creates one formal Task with Project, Milestone and meeting sour
   });
 });
 
+test('Duplicate clicks while a Task save is pending write one formal Task', async ({ page }) => {
+  await page.evaluate(() => {
+    window.__writes = [];
+    window.firebaseDb = { ref: path => ({ set: value => {
+      window.__writes.push({ path, value });
+      return new Promise(resolve => { window.__finishTaskSave = resolve; });
+    } }) };
+    window.PM.syncTask = async () => {};
+    window.PM.openTaskModal(null, 'p1', 'm1');
+  });
+  await page.fill('#pm-task-title', '二重保存の確認');
+  await page.evaluate(() => {
+    document.getElementById('pm-task-save-button').click();
+    document.getElementById('pm-task-save-button').click();
+  });
+  expect(await page.evaluate(() => window.__writes.length)).toBe(1);
+  await expect(page.locator('#pm-task-save-button')).toBeDisabled();
+  await page.evaluate(() => window.__finishTaskSave());
+  await expect(page.locator('#pm-task-modal')).not.toHaveClass(/open/);
+  await expect(page.locator('#pm-task-save-button')).toBeEnabled();
+});
+
+test('Retry after a lost Task save acknowledgement retains the creation ID', async ({ page }) => {
+  await page.evaluate(() => {
+    window.__writePaths = [];
+    window.firebaseDb = { ref: path => ({ set: async () => {
+      window.__writePaths.push(path);
+      if (window.__writePaths.length === 1) throw new Error('acknowledgement lost');
+    } }) };
+    window.PM.syncTask = async () => {};
+    window.PM.openTaskModal(null, 'p1', 'm1');
+  });
+  await page.fill('#pm-task-title', '再試行しても同じTask');
+  await page.click('#pm-task-save-button');
+  await expect(page.locator('#toast')).toContainText('Taskを保存できませんでした');
+  await expect(page.locator('#pm-task-save-button')).toBeEnabled();
+  await page.click('#pm-task-save-button');
+  const paths = await page.evaluate(() => window.__writePaths);
+  expect(paths).toHaveLength(2);
+  expect(paths[0]).toBe(paths[1]);
+});
+
 test('Milestone approval stays blocked until every Task is done', async ({ page }) => {
   await page.evaluate(() => {
     window.__pmWrites = [];
