@@ -126,6 +126,8 @@
       if (!options) document.getElementById('pm-task-id').value = id;
       const previous = this.task(id);
       const task = { ...(previous || {}), id, projectId, milestoneId, title, description, status, assignees, dueDate: dueDate || '', priority, sourceMeetingId: source.sourceMeetingId || previous?.sourceMeetingId || '', sourceMeetingDeleted: Boolean(previous?.sourceMeetingDeleted), createdAt: previous?.createdAt || now(), syncStatus: previous?.syncStatus === 'synced' ? 'pending' : (previous?.syncStatus || 'pending'), ...this.metadata() };
+      task.completedAt = status === 'done'
+        ? (previous?.status === 'done' ? previous.completedAt || null : now()) : null;
       await this.write(`pm/tasks/${id}`, task);
       if (!source.silent) this.closeModal('pm-task-modal');
       this.syncTask(id).catch(() => {});
@@ -139,7 +141,9 @@
         document.getElementById('pm-task-status').value = status;
         return;
       }
-      await this.update(`pm/tasks/${id}`, { status, syncStatus: 'pending', ...this.metadata() });
+      const completedAt = status === 'done'
+        ? (task.status === 'done' ? task.completedAt || null : now()) : null;
+      await this.update(`pm/tasks/${id}`, { status, completedAt, syncStatus: 'pending', ...this.metadata() });
       this.syncTask(id).catch(() => {});
     },
     async approveMilestone(id) {
@@ -207,6 +211,7 @@
       const today = dateOnly(); const tomorrowDate = dateOnly(1);
       const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
       const weekStart = dateOnly(-weekday); const weekDate = dateOnly(6 - weekday);
+      const weekStartInstant = Date.parse(`${weekStart}T00:00:00+09:00`);
       const reviewLimit = Date.now() - 48 * 60 * 60 * 1000;
       const active = this.tasks.filter(t => t.status !== 'done');
       return {
@@ -215,7 +220,10 @@
         week: active.filter(t => t.dueDate && t.dueDate >= weekStart && t.dueDate <= weekDate),
         blocked: active.filter(t => t.status === 'blocked'),
         review: active.filter(t => t.status === 'review' && new Date(t.updatedAt || t.createdAt).getTime() <= reviewLimit),
-        sync: this.tasks.filter(t => t.syncStatus === 'error')
+        sync: this.tasks.filter(t => t.syncStatus === 'error'),
+        // Old records without a completion instant are not fabricated from edits.
+        completedWeek: this.tasks.filter(t => t.status === 'done' && t.completedAt
+          && Date.parse(t.completedAt) >= weekStartInstant && Date.parse(t.completedAt) <= Date.now())
       };
     },
     milestoneProgress(milestone) { const tasks = this.taskCount(milestone.id); return { total: tasks.length, done: tasks.filter(t => t.status === 'done').length }; },
@@ -230,8 +238,9 @@
     },
     makeSummary(a) {
       const completed = this.milestones.filter(m => m.status === 'closed').map(m => m.name);
+      const completedTasks = (a.completedWeek || []).map(t => t.title);
       const next = this.tasks.filter(t => t.status !== 'done' && t.dueDate).sort((x,y) => x.dueDate.localeCompare(y.dueDate)).slice(0,3).map(t => `${t.title}（${t.dueDate}）`);
-      return `完了したMilestone: ${completed.length ? completed.join('、') : 'まだありません'}\n次の期限: ${next.length ? next.join(' / ') : '期限設定済みのTaskはありません'}\n判断・対応待ち: Blocked ${a.blocked.length}件、Review停滞 ${a.review.length}件、同期失敗 ${a.sync.length}件`;
+      return `完了したMilestone: ${completed.length ? completed.join('、') : 'まだありません'}\n今週完了したTask: ${completedTasks.length ? completedTasks.join('、') : '完了日時を確認できるTaskはありません'}\n次の期限: ${next.length ? next.join(' / ') : '期限設定済みのTaskはありません'}\n判断・対応待ち: Blocked ${a.blocked.length}件、Review停滞 ${a.review.length}件、同期失敗 ${a.sync.length}件`;
     },
     projectCards() {
       if (!this.projects.length) return '<div class="pm-empty">Projectを作成すると、ここで期限・Blocker・Milestone進捗を確認できます。</div>';

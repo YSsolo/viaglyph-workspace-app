@@ -68,6 +68,29 @@ test('external Issue and Milestone pulls populate transaction caches before guar
   assert.equal(listeners.size, 0);
 });
 
+test('GitHub completion uses closed_at, survives Done edits and clears on reopen', async () => {
+  const github = { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' };
+  const task = { id: 't1', projectId: 'p1', status: 'todo', updatedAt: 'r1', syncStatus: 'synced', github };
+  const data = { 'pm/tasks': { t1: task }, 'pm/tasks/t1': task, 'pm/milestones': {},
+    'pm/projects': { p1: { github: { owner: 'YSsolo', repo: 'repo' } } } };
+  const { worker } = loadWorker(data);
+  const issue = { number: 7, html_url: github.url, title: 'Done', state: 'closed',
+    closed_at: '2026-10-12T15:00:00Z', updated_at: '2026-10-13T01:00:00Z' };
+  const pull = async changes => {
+    data['pm/tasks'].t1 = data['pm/tasks/t1'];
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: data['pm/tasks/t1'].updatedAt,
+      repository: { full_name: 'YSsolo/repo' }, issue: { ...issue, ...changes } });
+  };
+  await pull({});
+  assert.equal(data['pm/tasks/t1'].completedAt, issue.closed_at);
+  await pull({ title: 'Edited', updated_at: '2026-10-14T01:00:00Z' });
+  assert.equal(data['pm/tasks/t1'].completedAt, issue.closed_at);
+  await pull({ state: 'open', closed_at: null });
+  assert.equal(data['pm/tasks/t1'].completedAt, null);
+  await pull({ closed_at: null });
+  assert.equal(data['pm/tasks/t1'].completedAt, null, 'missing close instant must not use the latest edit');
+});
+
 test('Task synchronization rejects a foreign-Project Milestone before any external request or write', async () => {
   const milestone = { id: 'foreign', projectId: 'other', name: 'Other Milestone', status: 'open' };
   const data = {

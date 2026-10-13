@@ -25,6 +25,65 @@ function dashboardAt(instant, tasks) {
 
 const ids = tasks => Array.from(tasks, task => task.id);
 
+test('Task editing records completion, preserves it on edits and clears it on reopen', async () => {
+  const pm = dashboardAt('2026-10-13T03:00:00Z', []);
+  pm.state.projects.p1 = { github: { owner: 'YSsolo', repo: 'viaglyph-workspace-app' } };
+  pm.metadata = () => ({ updatedAt: '2026-10-13T03:00:00Z', updatedBy: '山口' });
+  pm.write = async (_path, record) => { pm.state.tasks[record.id] = record; };
+  pm.syncTask = async () => {};
+  const input = { id: 'task', projectId: 'p1', milestoneId: 'm1', title: '完了', status: 'done', assignees: ['山口'], dueDate: '2026-10-13', silent: true };
+  await pm.persistTask(input);
+  assert.equal(pm.task('task').completedAt, '2026-10-13T03:00:00.000Z');
+  pm.state.tasks.task.completedAt = '2026-10-12T03:00:00Z';
+  await pm.persistTask({ ...input, title: '編集' });
+  assert.equal(pm.task('task').completedAt, '2026-10-12T03:00:00Z');
+  await pm.persistTask({ ...input, status: 'todo' });
+  assert.equal(pm.task('task').completedAt, null);
+  pm.state.tasks.task.status = 'done';
+  delete pm.state.tasks.task.completedAt;
+  await pm.persistTask(input);
+  assert.equal(pm.task('task').completedAt, null, 'legacy Done edits must not invent a completion time');
+});
+
+test('Workspace status transitions record completion once and clear it on reopen', async () => {
+  const pm = dashboardAt('2026-10-13T03:00:00Z', [
+    { id: 'task', status: 'todo', assignees: ['山口'], dueDate: '2026-10-13' }
+  ]);
+  pm.metadata = () => ({ updatedAt: '2026-10-13T03:00:00Z', updatedBy: '山口' });
+  pm.update = async (_path, patch) => Object.assign(pm.state.tasks.task, patch);
+  pm.syncTask = async () => {};
+  await pm.updateTaskStatus('task', 'done');
+  assert.equal(pm.task('task').completedAt, '2026-10-13T03:00:00.000Z');
+  pm.state.tasks.task.completedAt = '2026-10-12T03:00:00Z';
+  await pm.updateTaskStatus('task', 'done');
+  assert.equal(pm.task('task').completedAt, '2026-10-12T03:00:00Z');
+  await pm.updateTaskStatus('task', 'todo');
+  assert.equal(pm.task('task').completedAt, null);
+});
+
+test('weekly completion summary uses completion instants in JST, not latest edit dates', () => {
+  const pm = dashboardAt('2026-10-13T03:00:00Z', [
+    { id: 'start', title: '月曜完了', status: 'done', completedAt: '2026-10-11T15:00:00Z' },
+    { id: 'before', title: '前週完了', status: 'done', completedAt: '2026-10-11T14:59:59Z', updatedAt: '2026-10-13T01:00:00Z' },
+    { id: 'unknown', title: '日時不明', status: 'done', updatedAt: '2026-10-13T01:00:00Z' },
+    { id: 'invalid', title: '不正日時', status: 'done', completedAt: 'not-a-date' },
+    { id: 'future', title: '未来', status: 'done', completedAt: '2026-10-13T03:00:01Z' },
+    { id: 'reopened', title: '再開', status: 'todo', completedAt: '2026-10-13T01:00:00Z' }
+  ]);
+  assert.deepEqual(ids(pm.alerts().completedWeek || []), ['start']);
+  assert.match(pm.makeSummary(pm.alerts()), /今週完了したTask: 月曜完了/);
+});
+
+test('weekly completed Tasks switch at Monday JST and exclude unknown historical completion', () => {
+  const tasks = [
+    { id: 'sunday', title: '日曜', status: 'done', completedAt: '2026-10-18T14:59:59Z' },
+    { id: 'monday', title: '月曜', status: 'done', completedAt: '2026-10-18T15:00:00Z' }
+  ];
+  assert.deepEqual(ids(dashboardAt('2026-10-18T15:00:00Z', tasks).alerts().completedWeek || []), ['monday']);
+  const empty = dashboardAt('2026-10-13T03:00:00Z', [{ id: 'unknown', status: 'done' }]);
+  assert.match(empty.makeSummary(empty.alerts()), /今週完了したTask: 完了日時を確認できるTaskはありません/);
+});
+
 test('Dashboard uses the JST date after Japanese midnight, not the previous UTC date', () => {
   const pm = dashboardAt('2026-10-12T16:00:00Z', [
     { id: 'yesterday', dueDate: '2026-10-12' },

@@ -429,6 +429,9 @@ async function applyIssueWebhook(payload) {
   const sameRepository = project && `${project.github?.owner}/${project.github?.repo}`.toLowerCase() === repository.full_name.toLowerCase();
   if (!sameRepository) return;
   const patch = { title: issue.title, status, assignees, milestoneId: milestone?.id || task.milestoneId, externalUpdatedAt: issue.updated_at, syncStatus: 'synced', lastSyncedAt: new Date().toISOString(), lastError: null, updatedAt: new Date().toISOString(), updatedBy: `GitHub/${repository.full_name}` };
+  patch.completedAt = status === 'done'
+    ? (task.status === 'done' ? task.completedAt || null
+      : (typeof issue.closed_at === 'string' && Number.isFinite(Date.parse(issue.closed_at)) ? issue.closed_at : null)) : null;
   if (payload.expectedUpdatedAt !== undefined) {
     await applyExternalRevision(db.ref(`pm/tasks/${task.id}`), payload.expectedUpdatedAt, patch);
   } else {
