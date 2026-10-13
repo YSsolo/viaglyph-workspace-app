@@ -11,6 +11,7 @@ test('Actions stores a safe failure, never the transport exception or credential
   let finish;
   const finished = new Promise(resolve => { finish = resolve; });
   const worker = {
+    shutdown: async () => { finish(); },
     db: { ref: target => ({
       get: async () => ({ val: () => target === 'pm/tasks'
         ? { t1: { id: 't1', syncStatus: 'pending' } } : {} }),

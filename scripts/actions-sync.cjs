@@ -85,5 +85,5 @@ async function digest() {
     await reconcile();
     if (process.env.WORKSPACE_SEND_DIGEST === 'true') await digest();
   } catch (_) { console.error('Workspace worker failed. Check credential and database configuration.'); process.exitCode = 1; }
-  finally { await require('firebase-admin').app().delete(); }
+  finally { await worker.shutdown(); }
 })();

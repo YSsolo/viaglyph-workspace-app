@@ -29,6 +29,7 @@ async function runWorker(projectId, sendDigest = false, clean = false) {
   let finish;
   const finished = new Promise(resolve => { finish = resolve; });
   const worker = {
+    shutdown: async () => { finish(); },
     db: { ref: target => ({
       get: async () => ({ val: () => data[target] || null }),
       update: async patch => { writes.push({ target, patch }); },

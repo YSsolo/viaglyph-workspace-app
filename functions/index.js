@@ -295,14 +295,18 @@ async function syncMilestoneRecord(milestone) {
   const project = projectSnap.val();
   if (!project?.github?.owner || !project?.github?.repo) throw new Error('Project repository is not configured');
   const { owner, repo } = project.github;
-  const payload = { title: milestone.name, due_on: milestone.dueDate ? `${milestone.dueDate}T23:59:59Z` : null, state: milestone.status === 'closed' ? 'closed' : 'open', description: milestone.successCriteria || '' };
+  const payload = { title: milestone.name, due_on: milestone.dueDate ? `${milestone.dueDate}T23:59:59Z` : null, state: milestone.status === 'closed' ? 'closed' : 'open' };
   if (!milestone.github?.number) {
     const marker = `<!-- viaglyph-milestone:${milestone.id} -->`;
-    payload.description = `${payload.description}\n\n${marker}`;
+    payload.description = marker;
     for (let page = 1; ; page++) {
       const items = await github(owner, `/repos/${owner}/${repo}/milestones?state=all&per_page=100&page=${page}`);
       const recovered = items.find(item => (item.description || '').includes(marker));
-      if (recovered) { milestone = { ...milestone, github: { number: recovered.number } }; break; }
+      if (recovered) {
+        milestone = { ...milestone, github: { number: recovered.number } };
+        delete payload.description;
+        break;
+      }
       if (items.length < 100) break;
     }
   }
@@ -460,7 +464,7 @@ exports.githubWebhook = onRequest({ secrets: [githubWebhookSecret] }, async (req
 });
 
 // Shared server-only operations used by the Spark-compatible Actions worker.
-exports.workspaceWorker = { db, github, syncTaskRecord, syncMilestoneRecord, applyIssueWebhook, applyMilestoneWebhook };
+exports.workspaceWorker = { db, github, syncTaskRecord, syncMilestoneRecord, applyIssueWebhook, applyMilestoneWebhook, shutdown: () => admin.app().delete() };
 
 /** Reconciles pending and failed synchronization records every fifteen minutes. */
 exports.reconcileGitHub = onSchedule({ schedule: 'every 15 minutes', timeZone: 'Asia/Tokyo', secrets: [githubTokenGandT, githubTokenYSsolo, githubTokenShota656] }, async () => {

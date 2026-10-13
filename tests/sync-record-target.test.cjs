@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function loadWorker(data) {
+function loadWorker(data, recoveredMilestone = null) {
   const writes = [];
   const requests = [];
+  const bodies = [];
   const exported = {};
   const filename = path.resolve(__dirname, '../functions/index.js');
   const db = { ref: target => ({
@@ -22,8 +23,10 @@ function loadWorker(data) {
     console, Date, URL, Buffer,
     fetch: async (url, options = {}) => {
       requests.push(url);
-      return { ok: true, json: async () => !options.method ? []
-        : { number: 1, html_url: 'https://github.com/YSsolo/repo/issues/1', updated_at: '2026-10-13T00:00:00Z' } };
+      if (options.body) bodies.push(JSON.parse(options.body));
+      return { ok: true, json: async () => !options.method
+        ? (recoveredMilestone && url.includes('/milestones?') ? [recoveredMilestone] : [])
+        : { number: url.endsWith('/milestones/17') ? 17 : 1, html_url: 'https://github.com/YSsolo/repo/issues/1', updated_at: '2026-10-13T00:00:00Z' } };
     },
     require: name => {
       if (name === 'firebase-functions/v2/https') return { onRequest: (_, handler) => handler };
@@ -35,7 +38,7 @@ function loadWorker(data) {
       return require(path.resolve(path.dirname(filename), name));
     }
   }, { filename });
-  return { worker: exported.workspaceWorker, writes, requests };
+  return { worker: exported.workspaceWorker, writes, requests, bodies };
 }
 
 test('Task synchronization rejects a foreign-Project Milestone before any external request or write', async () => {
@@ -83,4 +86,28 @@ test('a Milestone pull targets its selected record when Projects share a reposit
     repository: { full_name: 'YSsolo/repo' }, milestone: { number: 1, title: 'Updated', state: 'open', updated_at: '2026-10-13T00:00:00Z' } });
   assert.deepEqual(writes, ['pm/milestones/selected-ms']);
   assert.equal(data['pm/milestones/other-ms'].name, 'Other');
+});
+
+test('Workspace-only completion criteria never enter a GitHub Milestone payload', async () => {
+  for (const github of [undefined, { number: 1 }]) {
+    const data = { 'pm/projects/selected': { github: { owner: 'YSsolo', repo: 'repo' } } };
+    const { worker, bodies } = loadWorker(data);
+    await worker.syncMilestoneRecord({ id: 'm1', projectId: 'selected', name: 'Milestone', status: 'open',
+      successCriteria: 'WORKSPACE_ONLY_CRITERIA', github });
+    assert.equal(JSON.stringify(bodies).includes('WORKSPACE_ONLY_CRITERIA'), false);
+    if (github) assert.equal(Object.hasOwn(bodies[0], 'description'), false);
+    else assert.equal(bodies[0].description, '<!-- viaglyph-milestone:m1 -->');
+  }
+});
+
+test('marker recovery preserves the existing GitHub Milestone description and does not create a duplicate', async () => {
+  const data = { 'pm/projects/selected': { github: { owner: 'YSsolo', repo: 'repo' } } };
+  const { worker, bodies, requests } = loadWorker(data, {
+    number: 17, description: 'Human-maintained description\n<!-- viaglyph-milestone:m1 -->'
+  });
+  await worker.syncMilestoneRecord({ id: 'm1', projectId: 'selected', name: 'Milestone', status: 'open', successCriteria: 'WORKSPACE_ONLY_CRITERIA' });
+  assert.equal(Object.hasOwn(bodies[0], 'description'), false);
+  assert.equal(JSON.stringify(bodies).includes('WORKSPACE_ONLY_CRITERIA'), false);
+  assert.equal(requests.at(-1), 'https://api.github.com/repos/YSsolo/repo/milestones/17');
+  assert.equal(data['pm/milestones/m1'].github.number, 17);
 });
