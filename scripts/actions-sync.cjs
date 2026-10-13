@@ -3,6 +3,12 @@ const { workspaceWorker: worker } = require('../functions');
 const stamp = () => new Date().toISOString();
 
 async function reconcile() {
+  const projectId = process.env.WORKSPACE_SYNC_PROJECT_ID || '';
+  if (projectId) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(projectId)) throw new Error('Invalid acceptance Project ID');
+    if (process.env.WORKSPACE_SEND_DIGEST === 'true') throw new Error('A scoped run cannot send a global digest');
+    if (!(await worker.db.ref(`pm/projects/${projectId}`).get()).val()) throw new Error('Acceptance Project not found');
+  }
   let failures = 0;
   for (const [collection, sync, pull] of [
     ['milestones', worker.syncMilestoneRecord, worker.applyMilestoneWebhook],
@@ -10,6 +16,7 @@ async function reconcile() {
   ]) {
     const records = (await worker.db.ref(`pm/${collection}`).get()).val() || {};
     for (const record of Object.values(records)) {
+      if (projectId && record.projectId !== projectId) continue;
       const ref = worker.db.ref(`pm/${collection}/${record.id}`);
       try {
         if (['pending', 'error'].includes(record.syncStatus)) {
@@ -38,7 +45,9 @@ async function reconcile() {
       }
     }
   }
-  await worker.db.ref('pm/integration').update({ mode: 'actions', lastRunAt: stamp(), failures });
+  // A bounded acceptance run is not evidence of whole-Workspace health.
+  await worker.db.ref(projectId ? `pm/acceptanceRuns/${projectId}` : 'pm/integration')
+    .update({ mode: 'actions', lastRunAt: stamp(), failures });
   if (failures) process.exitCode = 1;
 }
 

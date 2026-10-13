@@ -23,6 +23,7 @@
   "localVerification": {
     "pmBrowserSuite": { "passed": 19, "file": "tests/pm-v2.spec.js", "scope": "local UI with injected identity and controlled data/writes, including Backlog quick-transition editing the same Task ID; not real OAuth or Issue/Slack acceptance" },
     "syncErrorRedaction": { "passed": 2, "file": "tests/sync-error-redaction.test.cjs", "scope": "production Actions entrypoint and Functions scheduled/PM HTTP error boundaries, synthetic credential-bearing transport exceptions, no real credentials/network; Slack-specific and webhook error boundaries still require separate verification" },
+    "actionsProjectScope": { "passed": 4, "file": "tests/actions-scope.test.cjs", "scope": "production worker entrypoint with isolated transport: selected Project only, separate acceptance receipt, invalid/unknown scope fails before writes, scoped digest rejection, unchanged all-Project behavior without a scope; no real Issue creation or OIDC execution" },
     "authSession": { "passed": 7, "file": "tests/auth-session.test.cjs", "scope": "SDK observer-boundary harness; signed identity selection, auth-loss cleanup, stale request ordering and provider error redaction" },
     "authDomain": { "passed": 3, "file": "tests/auth-domain.test.cjs" },
     "hostingSecurity": { "passed": 3, "file": "tests/hosting-security.test.cjs" },

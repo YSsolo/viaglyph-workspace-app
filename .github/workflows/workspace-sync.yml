@@ -5,6 +5,10 @@ on:
     - cron: '0 0 * * 1-5'
   workflow_dispatch:
     inputs:
+      project_id:
+        type: string
+        default: ''
+        description: Optional Project ID for a bounded acceptance run (no Slack digest)
       send_digest:
         type: boolean
         default: false
@@ -26,6 +30,7 @@ jobs:
       GITHUB_TOKEN_SHOTA656: ${{ secrets.WORKSPACE_GH_PAT_SHOTA656 }}
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       WORKSPACE_SEND_DIGEST: ${{ github.event.schedule == '0 0 * * 1-5' || inputs.send_digest == true }}
+      WORKSPACE_SYNC_PROJECT_ID: ${{ inputs.project_id || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
