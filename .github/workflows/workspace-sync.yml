@@ -21,9 +21,9 @@ jobs:
     timeout-minutes: 10
     env:
       WORKSPACE_DATABASE_URL: https://viaglyph-workspace-default-rtdb.firebaseio.com
-      GITHUB_TOKEN_YSSOLO: ${{ secrets.GITHUB_TOKEN_YSSOLO }}
-      GITHUB_TOKEN_GANDT: ${{ secrets.GITHUB_TOKEN_GANDT }}
-      GITHUB_TOKEN_SHOTA656: ${{ secrets.GITHUB_TOKEN_SHOTA656 }}
+      GITHUB_TOKEN_YSSOLO: ${{ secrets.WORKSPACE_GH_PAT_YSSOLO }}
+      GITHUB_TOKEN_GANDT: ${{ secrets.WORKSPACE_GH_PAT_GANDT }}
+      GITHUB_TOKEN_SHOTA656: ${{ secrets.WORKSPACE_GH_PAT_SHOTA656 }}
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       WORKSPACE_SEND_DIGEST: ${{ github.event.schedule == '0 0 * * 1-5' || inputs.send_digest == true }}
     steps:
