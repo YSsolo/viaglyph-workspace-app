@@ -1,0 +1,24 @@
+{
+  "project": "viaglyph-workspace",
+  "dateJst": "2026-10-13",
+  "containment": {
+    "applicationAssetsExplicitlyCopied": 10,
+    "publicDevelopmentPaths": "sampled paths returned HTTP 404; app root returned HTTP 200",
+    "exposedSlackToken": "auth.test confirmed valid before revocation; auth.revoke returned revoked=true; follow-up auth.test returned account_inactive",
+    "localSecretRemoval": ["gas/Code.gs", "gas-deploy/コード.js", "test_canvas.js"],
+    "hostingVersionsDeletedAndVerified": ["d98f390a27ac72c5", "ada5996664cdc66d", "19c12597c07ccd54", "095e4d923ed0a09f", "953faadeb7ea3004"]
+  },
+  "accessInvestigation": {
+    "resource": "firebase_domain",
+    "rangeUtc": ["2026-09-20T14:18:00Z", "2026-10-13T01:50:00Z"],
+    "developmentPathMatchingEntries": 0,
+    "conclusion": "Third-party access cannot be excluded: logging export and retention coverage have not been established. External cached or downloaded copies cannot be inspected or removed."
+  },
+  "googleCredential": {
+    "exposedType": "user OAuth access token in private tool transcript on 2026-09-20",
+    "currentAssessment": "past its documented one-hour lifetime; expiry inferred from token type and elapsed time, not tested using the original token",
+    "sessionRevoked": false,
+    "refreshCredentialExposureObserved": false
+  },
+  "remaining": ["new Slack token and Bot channel memberships", "owner-scoped GitHub PATs", "real OAuth and PM synchronization acceptance", "CI and deployment identities remain separate concerns"]
+}

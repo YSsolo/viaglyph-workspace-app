@@ -29,6 +29,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: node --test tests/sync-revision.test.cjs
+      - run: node --test tests/hosting-security.test.cjs
+      - run: node scripts/build-hosting.cjs
       - run: node --check pm.js && node --check api.js && node --check functions/index.js
 
   deploy:
