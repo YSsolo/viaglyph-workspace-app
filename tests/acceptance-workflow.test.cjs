@@ -10,7 +10,7 @@ test('the manual acceptance workflow pins reviewed code and one Project with no 
   assert.match(source, /on:\s*\n\s+workflow_dispatch:/);
   assert.doesNotMatch(source, /\b(schedule|pull_request|push|environment):/);
   assert.ok(source.includes("github.repository == 'YSsolo/viaglyph-workspace-app' && github.ref == 'refs/heads/master'"));
-  assert.ok(source.includes('ref: 7bbe1ae1d8405c989b12142e44a2b1a92b5968dd'));
+  assert.ok(source.includes('ref: c0b11be869720be50c42d8a3afde326770fd35dc'));
   assert.ok(source.includes('persist-credentials: false'));
   assert.ok(source.includes('group: workspace-sync'));
   assert.ok(source.includes('WORKSPACE_SYNC_PROJECT_ID: b819c1c6-d932-44ae-9677-6329faf96a16'));
