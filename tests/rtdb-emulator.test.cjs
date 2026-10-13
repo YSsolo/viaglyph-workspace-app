@@ -127,8 +127,10 @@ for (const scenario of ['edit-during-push', 'delete-during-pull', 'delete-on-pul
         require: name => name === '../functions' ? { workspaceWorker: worker }
           : require(path.resolve(path.dirname(filename), name)) }, { filename });
       await finished;
-      const result = await environment.withSecurityRulesDisabled(context => context.database().ref('pm').get());
-      const state = result.val();
+      let state;
+      await environment.withSecurityRulesDisabled(async context => {
+        state = (await context.database().ref('pm').get()).val();
+      });
       if (scenario.startsWith('delete')) assert.equal(state.tasks?.t1, undefined);
       else {
         assert.equal(state.tasks.t1.title, 'Newer edit');
