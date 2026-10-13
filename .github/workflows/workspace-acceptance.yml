@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: e923716720d8ab59937ce021e9f15dae63a10a5d
+          ref: 7bbe1ae1d8405c989b12142e44a2b1a92b5968dd
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -27,7 +27,7 @@ jobs:
       - run: npm ci
       - run: npm --prefix functions ci
       - name: Verify pinned worker before authenticating
-        run: node --test tests/sync-record-target.test.cjs tests/actions-scope.test.cjs tests/actions-secrets.test.cjs tests/sync-error-redaction.test.cjs tests/sync-revision.test.cjs
+        run: node --test tests/sync-record-target.test.cjs tests/actions-scope.test.cjs tests/actions-secrets.test.cjs tests/sync-error-redaction.test.cjs tests/sync-revision.test.cjs tests/worker-wif-runtime.test.cjs
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
