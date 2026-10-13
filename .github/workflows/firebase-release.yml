@@ -34,6 +34,12 @@ jobs:
       - run: node --test tests/auth-session.test.cjs
       - run: node --test tests/migration.test.cjs
       - run: node --test tests/dashboard-dates.test.cjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Native Firebase Rules and migration verification (demo only)
+        run: npx --yes firebase-tools@15.33.0 emulators:exec --config firebase.emulator.json --project demo-viaglyph-pm-tests --only database --non-interactive "node --test tests/rtdb-emulator.test.cjs"
       - run: node scripts/build-hosting.cjs
       - run: node --check pm.js && node --check api.js && node --check functions/index.js
 

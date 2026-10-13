@@ -29,6 +29,10 @@
     "liveAccessRejection": { "passed": 2, "file": "tests/live-public-access.test.cjs" },
     "rulesStructuralChecks": { "passed": 21, "file": "tests/m5-challenge-rules.js", "scope": "structural/synthetic evaluator, not Firebase emulator" },
     "migration": { "passed": 16, "file": "tests/migration.test.cjs", "scope": "production migration functions with controlled RTDB transport; backup, freshness/schema guard, alias/formal collisions, root preservation; not real SDK retries or server Rules" },
+    "dashboardDates": { "passed": 6, "file": "tests/dashboard-dates.test.cjs", "scope": "JST midnight/year rollover, inclusive Monday-Sunday week, recent Review health and exact 48-hour threshold; continuous Review residence tracking is still pending" },
+    "dashboardDateCandidate": "independent bounded review passed pm.js d418d824c4059223075c70c198a0374d2c2c8919 and date tests 755a1460d329def912505ade9ca06ebcb1da50d7 at commit cb1921c; browser18 and unit39 passed locally; not deployed",
+    "nativeDatabase": "demo-only native Firebase SDK/Rules tests added; local execution without emulator rejected before initialization as intended; Java absent locally; actual native migration/Rules test results pending CI",
+    "testDependencies": "Firebase 10.14.1 test dependency matches current browser SDK; npm reported 15 development-only dependency vulnerabilities; npm audit --omit=dev reported zero; no automatic breaking upgrades applied and no dependencies published by the ten-file Hosting allowlist",
     "independentReview": "bounded auth-domain/session and Canvas false-error correction passed read-only review; this does not establish overall completion"
   },
   "deploymentState": {
@@ -42,6 +46,7 @@
     "web.app logout and other two allowlisted users; real sign-in and authenticated resume are confirmed, but this is not a complete auth access matrix",
     "actual approved/unauthorized/expired-member RTDB access matrix",
     "formal Task/Milestone CRUD and all required dashboard dates/health/summary behavior",
+    "continuous Review residence timestamp across edits/external pulls and rule-based weekly completed-Task summary",
     "real Canvas link error-free readback and deleted-meeting Task retention",
     "owner-scoped PAT setup, Actions execution and real Issue/Milestone two-way synchronization",
     "GitHub failure, token expiry, interrupted delivery/retry and external update ordering",
