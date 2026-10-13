@@ -1323,10 +1323,10 @@ window.hideSlashPopup = function() {
 };
 
 window.executeSlashCommand = function(cmd) {
-  hideSlashPopup();
-  if (!slashPopupTargetBlockKey || !canvasCurrentId) return;
   const key = slashPopupTargetBlockKey;
   const idx = slashPopupTargetBlockIdx;
+  hideSlashPopup();
+  if (!key || !canvasCurrentId) return;
   const targetEl = document.querySelector(`[data-key="${key}"] .cb-text`) || document.querySelector(`[data-key="${key}"]`);
   
   if (targetEl) {

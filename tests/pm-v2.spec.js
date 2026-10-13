@@ -235,3 +235,20 @@ test('Canvas task flow selects a PM Project and Milestone before creating a form
     assignees: ['山口'], dueDate: '2026-09-25', status: 'todo'
   });
 });
+
+test('clicking /task in the Canvas slash menu opens the formal Task modal', async ({ page }) => {
+  await page.evaluate(() => {
+    canvasCurrentId = 'meeting-001';
+    canvasBlocks = [{ key: 'block-001', type: 'text', text: '/task', order: 0 }];
+    window.firebaseDb = { ref: () => ({ set: async () => {} }) };
+    const block = document.createElement('div');
+    block.dataset.key = 'block-001';
+    block.dataset.idx = '0';
+    block.textContent = '/task';
+    document.body.appendChild(block);
+    window.showSlashPopup(block);
+  });
+  await page.locator('#slash-command-popup [data-cmd="/task"]').dispatchEvent('mousedown');
+  await expect(page.locator('#canvas-task-modal')).toHaveClass(/open/);
+  await expect(page.locator('#c-task-goal')).toHaveValue('p1:m1');
+});
