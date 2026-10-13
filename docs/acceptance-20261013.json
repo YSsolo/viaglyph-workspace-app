@@ -21,7 +21,8 @@
     "browserControl": "intermittent browser-control setup/input timeouts; do not infer application failure or operation success from these timeouts"
   },
   "localVerification": {
-    "pmBrowserSuite": { "passed": 18, "file": "tests/pm-v2.spec.js", "scope": "local UI with injected identity and controlled data/writes, not real OAuth or Issue/Slack acceptance" },
+    "pmBrowserSuite": { "passed": 19, "file": "tests/pm-v2.spec.js", "scope": "local UI with injected identity and controlled data/writes, including Backlog quick-transition editing the same Task ID; not real OAuth or Issue/Slack acceptance" },
+    "syncErrorRedaction": { "passed": 2, "file": "tests/sync-error-redaction.test.cjs", "scope": "production Actions entrypoint and Functions scheduled/PM HTTP error boundaries, synthetic credential-bearing transport exceptions, no real credentials/network; Slack-specific and webhook error boundaries still require separate verification" },
     "authSession": { "passed": 7, "file": "tests/auth-session.test.cjs", "scope": "SDK observer-boundary harness; signed identity selection, auth-loss cleanup, stale request ordering and provider error redaction" },
     "authDomain": { "passed": 3, "file": "tests/auth-domain.test.cjs" },
     "hostingSecurity": { "passed": 3, "file": "tests/hosting-security.test.cjs" },
@@ -31,7 +32,7 @@
     "migration": { "passed": 16, "file": "tests/migration.test.cjs", "scope": "production migration functions with controlled RTDB transport; backup, freshness/schema guard, alias/formal collisions, root preservation; not real SDK retries or server Rules" },
     "dashboardDates": { "passed": 6, "file": "tests/dashboard-dates.test.cjs", "scope": "JST midnight/year rollover, inclusive Monday-Sunday week, recent Review health and exact 48-hour threshold; continuous Review residence tracking is still pending" },
     "dashboardDateCandidate": "independent bounded review passed pm.js d418d824c4059223075c70c198a0374d2c2c8919 and date tests 755a1460d329def912505ade9ca06ebcb1da50d7 at commit cb1921c; browser18 and unit39 passed locally; not deployed",
-    "nativeDatabase": "demo-only native Firebase SDK/Rules tests added; local execution without emulator rejected before initialization as intended; Java absent locally; actual native migration/Rules test results pending CI",
+    "nativeDatabase": { "passed": 5, "file": "tests/rtdb-emulator.test.cjs", "commit": "97cd8dfaf1637e8c8b3c95faa49d60a1c63fe0df", "ciRun": "https://github.com/YSsolo/viaglyph-workspace-app/actions/runs/38355305607", "scope": "real Firebase 10.14.1 SDK and production Rules against loopback demo RTDB; mocked auth identities, not real OAuth; denied anonymous/outside/Google identities, allowed three IDs, Todo owner/date validation, root migration/backup preservation, competing client mutation and two native transaction attempts with callback re-evaluation; no production data writes" },
     "testDependencies": "Firebase 10.14.1 test dependency matches current browser SDK; npm reported 15 development-only dependency vulnerabilities; npm audit --omit=dev reported zero; no automatic breaking upgrades applied and no dependencies published by the ten-file Hosting allowlist",
     "independentReview": "bounded auth-domain/session and Canvas false-error correction passed read-only review; this does not establish overall completion"
   },

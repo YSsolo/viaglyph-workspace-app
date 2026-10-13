@@ -133,7 +133,12 @@
     },
     async updateTaskStatus(id, status) {
       const task = this.task(id); if (!task) return;
-      if (status !== 'backlog' && (!task.assignees?.length || !task.dueDate)) return this.openTaskModal(task);
+      if (status !== 'backlog' && (!task.assignees?.length || !task.dueDate)) {
+        this.renderTasks();
+        this.openTaskModal(task.id);
+        document.getElementById('pm-task-status').value = status;
+        return;
+      }
       await this.update(`pm/tasks/${id}`, { status, syncStatus: 'pending', ...this.metadata() });
       this.syncTask(id).catch(() => {});
     },

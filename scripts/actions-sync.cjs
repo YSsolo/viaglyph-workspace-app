@@ -30,7 +30,9 @@ async function reconcile() {
         }
       } catch (error) {
         failures++;
-        await ref.update({ syncStatus: 'error', lastError: String(error.message).slice(0, 500), lastAttemptAt: stamp() });
+        // Transport exceptions may echo Authorization headers. Never persist
+        // exception text into member-readable database records.
+        await ref.update({ syncStatus: 'error', lastError: 'GitHub同期に失敗しました。連携設定を確認して再同期してください。', lastAttemptAt: stamp() });
         // Do not print tokens, request headers, or remote response bodies.
         console.error(`Synchronization failed: ${collection}/${record.id}`);
       }

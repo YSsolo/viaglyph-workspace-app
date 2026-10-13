@@ -48,6 +48,32 @@ test('Task requires owner and due date after leaving backlog', async ({ page }) 
   await expect(page.locator('#toast')).toContainText('Todo以降は担当者と期限が必須です');
 });
 
+test('quick Backlog-to-Todo transition schedules the existing Task without creating a duplicate', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.assign(window.PM.state.tasks.t1, { status: 'backlog', assignees: [], dueDate: '' });
+    window.__transitionWrites = [];
+    window.firebaseDb = { ref: path => ({ set: async value => window.__transitionWrites.push({ path, value }) }) };
+    window.PM.syncTask = async () => {};
+    window.setView('kanban');
+    window.PM.renderTasks();
+  });
+  const row = page.locator('.pm-task-row').filter({ hasText: 'デモ台本を作る' });
+  await row.locator('select.pm-status').selectOption('todo');
+  await expect(page.locator('#pm-task-modal-title')).toHaveText('Taskを編集');
+  await expect(page.locator('#pm-task-id')).toHaveValue('t1');
+  await expect(page.locator('#pm-task-title')).toHaveValue('デモ台本を作る');
+  await expect(page.locator('#pm-task-status')).toHaveValue('todo');
+  await expect(row.locator('select.pm-status')).toHaveValue('backlog');
+  expect(await page.evaluate(() => window.__transitionWrites.length)).toBe(0);
+  await page.locator('#pm-task-assignees [data-member="山口"]').click();
+  await page.fill('#pm-task-due', '2026-10-16');
+  await page.click('#pm-task-save-button');
+  await expect(page.locator('#pm-task-modal')).not.toHaveClass(/open/);
+  const writes = await page.evaluate(() => window.__transitionWrites);
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ path: 'pm/tasks/t1', value: { id: 't1', status: 'todo', assignees: ['山口'], dueDate: '2026-10-16' } });
+});
+
 test('Migration preview identifies projects, milestones and tasks without writing data', async ({ page }) => {
   await page.evaluate(() => {
     window.goals = [{ id: 1, name: '旧Project', bigGoals: [{ id: 2, name: '旧Milestone', midGoals: [{ id: 3, name: '旧グループ', tasks: [{ id: 4, name: '旧Task', done: false, assign: '山口' }] }] }] }];

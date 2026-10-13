@@ -353,7 +353,9 @@ function memberCors(handler, secrets) {
       const forbidden = message === 'Authentication required' || message === 'Workspace membership is required' || message.includes('not allowed');
       const unavailable = message.includes('is not configured');
       return res.status(forbidden ? 403 : unavailable ? 503 : 400).json({
-        error: unavailable ? 'A required Workspace integration is not configured.' : message,
+        error: unavailable ? 'A required Workspace integration is not configured.'
+          : forbidden ? 'Workspace access is not permitted.'
+          : 'Workspace request failed. Check integration settings and retry.',
         code: forbidden ? 'WORKSPACE_FORBIDDEN' : unavailable ? 'WORKSPACE_INTEGRATION_UNAVAILABLE' : 'WORKSPACE_REQUEST_INVALID'
       });
     }
@@ -458,8 +460,8 @@ exports.workspaceWorker = { db, github, syncTaskRecord, syncMilestoneRecord, app
 /** Reconciles pending and failed synchronization records every fifteen minutes. */
 exports.reconcileGitHub = onSchedule({ schedule: 'every 15 minutes', timeZone: 'Asia/Tokyo', secrets: [githubTokenGandT, githubTokenYSsolo, githubTokenShota656] }, async () => {
   const [tasksSnap, milestonesSnap] = await Promise.all([db.ref('pm/tasks').get(), db.ref('pm/milestones').get()]);
-  for (const milestone of Object.values(milestonesSnap.val() || {})) if (['pending','error'].includes(milestone.syncStatus)) { try { await syncMilestoneRecord(milestone); } catch (error) { await db.ref(`pm/milestones/${milestone.id}`).update({ syncStatus: 'error', lastError: error.message }); } }
-  for (const task of Object.values(tasksSnap.val() || {})) if (['pending','error'].includes(task.syncStatus)) { try { await syncTaskRecord(task); } catch (error) { await db.ref(`pm/tasks/${task.id}`).update({ syncStatus: 'error', lastError: error.message }); } }
+  for (const milestone of Object.values(milestonesSnap.val() || {})) if (['pending','error'].includes(milestone.syncStatus)) { try { await syncMilestoneRecord(milestone); } catch (error) { await db.ref(`pm/milestones/${milestone.id}`).update({ syncStatus: 'error', lastError: 'GitHub同期に失敗しました。連携設定を確認して再同期してください。' }); } }
+  for (const task of Object.values(tasksSnap.val() || {})) if (['pending','error'].includes(task.syncStatus)) { try { await syncTaskRecord(task); } catch (error) { await db.ref(`pm/tasks/${task.id}`).update({ syncStatus: 'error', lastError: 'GitHub同期に失敗しました。連携設定を確認して再同期してください。' }); } }
 });
 
 /** Sends one weekday morning digest for all team PM alerts. */
