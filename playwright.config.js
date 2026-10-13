@@ -2,7 +2,9 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: '.',
-  testMatch: ['tests/**/*.spec.js', '*.spec.js'],
+  // PM v2 replaces the legacy Goal/Kanban DOM contract. Legacy tests remain in the
+  // repository as migration references; the active suite validates the PM contract.
+  testMatch: ['tests/pm-v2.spec.js'],
   timeout: 30000,
   retries: 1,
   use: {

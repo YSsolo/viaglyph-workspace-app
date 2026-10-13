@@ -181,6 +181,12 @@ function closeCanvas() {
 
 function deleteCanvas() {
   if (!canvasCurrentId || !confirm('このキャンバスを削除しますか？')) return;
+  // PM v2 Taskは会議を削除しても消さない。出典だけを削除済みにする。
+  if (window.PM?.tasks) {
+    window.PM.tasks.filter(task => task.sourceMeetingId === canvasCurrentId).forEach(task => {
+      window.PM.update(`pm/tasks/${task.id}`, { sourceMeetingDeleted: true, updatedAt: new Date().toISOString(), updatedBy: window.PM.actor() }).catch(() => {});
+    });
+  }
   firebaseDb.ref(`canvases/${canvasCurrentId}`).remove();
   closeCanvas();
   toast('🗑 キャンバスを削除しました');
@@ -221,6 +227,11 @@ function renderBlocks() {
     // ゴールタスクブロック
     if (block.type === 'goal-task') {
       let isDone = false;
+      let taskMeta = null;
+      if (window.PM?.task && block.meta?.taskId) {
+        taskMeta = window.PM.task(block.meta.taskId);
+        isDone = taskMeta?.status === 'done';
+      }
       if (block.meta && block.meta.taskId && typeof goals !== 'undefined') {
         const proj = goals.find(p => p.id === block.meta.projId);
         const bg = proj?.bigGoals.find(b => b.id === block.meta.bigId);
@@ -228,7 +239,7 @@ function renderBlocks() {
         const task = mg?.tasks.find(t => t.id === block.meta.taskId);
         if (task) isDone = task.done;
       }
-      const mgName = block.meta?.mgName || '目標';
+      const mgName = taskMeta ? `${window.PM.project(taskMeta.projectId)?.name || 'Project'} / ${window.PM.milestone(taskMeta.milestoneId)?.name || 'Milestone'}` : (block.meta?.mgName || '目標');
       return `<div class="canvas-block block-checkbox" data-key="${block.key}" data-idx="${i}">
         <button class="block-delete" onclick="deleteBlock('${block.key}')" title="削除">✕</button>
         <div class="cb-check ${isDone ? 'checked' : ''}" onclick="toggleGoalTaskCheckbox('${block.key}')">
@@ -670,6 +681,14 @@ function toggleCheck(key) {
 
 function toggleGoalTaskCheckbox(key) {
   const block = canvasBlocks.find(b => b.key === key);
+  if (window.PM?.task && block?.meta?.taskId) {
+    const task = window.PM.task(block.meta.taskId);
+    if (task) {
+      window.PM.updateTaskStatus(task.id, task.status === 'done' ? 'todo' : 'done');
+      renderBlocks();
+      return;
+    }
+  }
   if (block && block.meta && block.meta.taskId && typeof goals !== 'undefined') {
     const proj = goals.find(p => p.id === block.meta.projId);
     const bg = proj?.bigGoals.find(b => b.id === block.meta.bigId);
@@ -991,7 +1010,24 @@ function showTaskModal(idx) {
   const modal = document.getElementById('canvas-task-modal');
   const sel = document.getElementById('c-task-goal');
   
-  // Populate Goal options from store.js `goals`
+  // PM v2: Project -> MilestoneをTaskの所属として選ぶ。
+  if (window.PM?.projects) {
+    let options = '';
+    window.PM.projects.forEach(project => {
+      window.PM.milestonesFor(project.id).filter(m => m.status !== 'closed').forEach(milestone => {
+        options += `<option value="${project.id}:${milestone.id}">${project.name} > ${milestone.name}</option>`;
+      });
+    });
+    sel.innerHTML = options || '<option value="">ProjectとMilestoneを先に作成してください</option>';
+    document.querySelector('#canvas-task-modal h3').textContent = '📝 正式Taskを作成して会議に紐付け';
+    document.getElementById('c-task-title').value = '';
+    document.getElementById('c-task-due').value = '';
+    document.querySelectorAll('#c-task-assign-tags .tag').forEach(t => t.classList.remove('selected'));
+    modal.classList.add('open');
+    document.getElementById('c-task-title').focus();
+    return;
+  }
+  // Legacy Goal options
   let options = '';
   if (typeof goals !== 'undefined') {
     goals.forEach(proj => {
@@ -1028,11 +1064,30 @@ window.submitCanvasTask = function() {
   }
   
   const parts = goalVal.split(':');
+  const assignees = Array.from(document.querySelectorAll('#c-task-assign-tags .selected')).map(el => el.getAttribute('data-member'));
+  const due = document.getElementById('c-task-due').value;
+  if (window.PM?.saveTask) {
+    const projectId = parts[0];
+    const milestoneId = parts[1];
+    const status = assignees.length && due ? 'todo' : 'backlog';
+    window.PM.saveTask({ title, projectId, milestoneId, assignees, dueDate: due, status, sourceMeetingId: canvasCurrentId }).then(task => {
+      if (!task) return;
+      const block = canvasBlocks[currentTaskTargetIdx];
+      block.type = 'goal-task';
+      block.text = title;
+      block.meta = { taskId: task.id, pm: true };
+      closeCanvasTaskModal(); renderBlocks(); saveCanvas();
+      if (typeof toast === 'function') {
+        toast(window.PM?.user?.()?.sessionMode === 'direct'
+          ? '正式Taskを保存しました。GitHub連携は準備中です。'
+          : '正式Taskを作成し、GitHub同期を開始しました');
+      }
+    }).catch(error => alert(error.message));
+    return;
+  }
   const projId = parseInt(parts[0], 10);
   const bigId = parseInt(parts[1], 10);
   const midId = parseInt(parts[2], 10);
-  const assignees = Array.from(document.querySelectorAll('#c-task-assign-tags .selected')).map(el => el.getAttribute('data-member'));
-  const due = document.getElementById('c-task-due').value;
   
   const proj = goals.find(x => x.id === projId);
   const bg = proj?.bigGoals.find(x => x.id === bigId);

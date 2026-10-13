@@ -1,6 +1,6 @@
 /**
  * Empirical Challenge Test Script for Milestone 5
- * Validates database.rules.json task schema validation rules.
+ * Validates the PM v2 (/pm/tasks) schema validation rules.
  */
 
 const fs = require('fs');
@@ -53,8 +53,8 @@ class RuleDataSnapshot {
     return this._val;
   }
   hasChildren(keys) {
-    if (!this._val || typeof this._val !== 'object' || Array.isArray(this._val)) return false;
-    if (!keys) return Object.keys(this._val).length > 0;
+    if (!this._val || typeof this._val !== 'object') return false;
+    if (!keys) return Array.isArray(this._val) ? this._val.length > 0 : Object.keys(this._val).length > 0;
     return keys.every(k => k in this._val && this._val[k] !== undefined && this._val[k] !== null);
   }
   child(key) {
@@ -75,20 +75,15 @@ try {
   process.exit(1);
 }
 
-const taskNodeRules = rulesJson.rules.tasks.$ctx.$task_id;
+const taskNodeRules = rulesJson.rules.pm.tasks.$task_id;
 
-function evaluateTaskRule(taskObj, ctx = 'dev') {
-  // Context check
-  const ctxRule = rulesJson.rules.tasks.$ctx['.validate'];
-  const ctxValid = ctx === 'dev' || ctx === 'biz';
-  if (!ctxValid) return false;
-
+function evaluateTaskRule(taskObj, taskId = 'task-101') {
   // Root task validate
   const taskSnap = new RuleDataSnapshot(taskObj);
   const taskRootExpr = taskNodeRules['.validate'];
   
-  const rootFn = new Function('newData', `$ctx`, `return ${taskRootExpr};`);
-  if (!rootFn(taskSnap, ctx)) {
+  const rootFn = new Function('newData', '$task_id', `return ${taskRootExpr};`);
+  if (!rootFn(taskSnap, taskId)) {
     return false;
   }
 
@@ -105,58 +100,67 @@ function evaluateTaskRule(taskObj, ctx = 'dev') {
   return true;
 }
 
-// Baseline valid task
+// Baseline valid PM v2 task. Backlog intentionally permits unassigned work.
 const baseValidTask = {
   id: 'task-101',
+  projectId: 'project-1',
+  milestoneId: 'milestone-1',
   title: 'Test Task Title',
-  status: 'TODO',
-  prio: '高',
-  assign: '山口',
-  ctx: 'dev'
+  status: 'backlog',
+  assignees: [],
+  dueDate: '',
+  priority: 'medium',
+  createdAt: '2026-09-20T00:00:00.000Z',
+  updatedAt: '2026-09-20T00:00:00.000Z',
+  updatedBy: '174987576'
 };
 
-// Test Case 1: Task WITH due (string)
+// Test Case 1: Backlog allows an empty due date and no assignee.
 try {
-  const taskWithDue = { ...baseValidTask, due: '2026-08-31' };
-  const isValid = evaluateTaskRule(taskWithDue);
-  assert.strictEqual(isValid, true, 'Task WITH valid due string must pass validation');
-  recordTest('Task WITH due (string) passes validation', true);
+  assert.strictEqual(evaluateTaskRule(baseValidTask), true, 'Backlog task must pass validation');
+  recordTest('Backlog task without assignee or due date passes validation', true);
 } catch (e) {
-  recordTest('Task WITH due (string) passes validation', false, e.message);
+  recordTest('Backlog task without assignee or due date passes validation', false, e.message);
 }
 
-// Test Case 2: Task WITHOUT due
+// Test Case 2: Todo requires both assignee and due date.
 try {
-  const taskWithoutDue = { ...baseValidTask }; // due omitted
-  const isValid = evaluateTaskRule(taskWithoutDue);
-  assert.strictEqual(isValid, true, 'Task WITHOUT due must pass validation');
-  recordTest('Task WITHOUT due passes validation', true);
+  const persistedBacklog = { ...baseValidTask };
+  delete persistedBacklog.assignees; // RTDB removes empty arrays.
+  assert.strictEqual(evaluateTaskRule(persistedBacklog), true, 'Persisted unassigned backlog must pass validation');
+  recordTest('RTDB-normalized backlog passes validation', true);
 } catch (e) {
-  recordTest('Task WITHOUT due passes validation', false, e.message);
+  recordTest('RTDB-normalized backlog passes validation', false, e.message);
 }
 
-// Test Case 3: Task with INVALID due type (number)
 try {
-  const taskWithInvalidDueNum = { ...baseValidTask, due: 1700000000 };
-  const isValid = evaluateTaskRule(taskWithInvalidDueNum);
-  assert.strictEqual(isValid, false, 'Task with due as number must fail validation');
-  recordTest('Task with invalid due type (number) fails validation', true);
+  const todo = { ...baseValidTask, status: 'todo', assignees: ['山口'], dueDate: '2026-09-30' };
+  assert.strictEqual(evaluateTaskRule(todo), true, 'Assigned todo with due date must pass validation');
+  recordTest('Todo with assignee and due date passes validation', true);
 } catch (e) {
-  recordTest('Task with invalid due type (number) fails validation', false, e.message);
+  recordTest('Todo with assignee and due date passes validation', false, e.message);
 }
 
-// Test Case 4: Task with INVALID due type (boolean)
+// Test Case 3: A non-backlog task cannot omit an assignee.
 try {
-  const taskWithInvalidDueBool = { ...baseValidTask, due: true };
-  const isValid = evaluateTaskRule(taskWithInvalidDueBool);
-  assert.strictEqual(isValid, false, 'Task with due as boolean must fail validation');
-  recordTest('Task with invalid due type (boolean) fails validation', true);
+  const todo = { ...baseValidTask, status: 'todo', dueDate: '2026-09-30' };
+  assert.strictEqual(evaluateTaskRule(todo), false, 'Unassigned todo must fail validation');
+  recordTest('Todo without assignee fails validation', true);
 } catch (e) {
-  recordTest('Task with invalid due type (boolean) fails validation', false, e.message);
+  recordTest('Todo without assignee fails validation', false, e.message);
 }
 
-// Test Case 5: Task with INVALID status
-const invalidStatuses = ['INVALID_STATUS', 'In Progress', 123, null];
+// Test Case 4: A non-backlog task cannot omit a due date.
+try {
+  const todo = { ...baseValidTask, status: 'todo', assignees: ['山口'] };
+  assert.strictEqual(evaluateTaskRule(todo), false, 'Todo without due date must fail validation');
+  recordTest('Todo without due date fails validation', true);
+} catch (e) {
+  recordTest('Todo without due date fails validation', false, e.message);
+}
+
+// Test Case 5: Invalid status and priority values are rejected.
+const invalidStatuses = ['INVALID_STATUS', 'TODO', 123, null];
 invalidStatuses.forEach(invStatus => {
   try {
     const taskWithInvalidStatus = { ...baseValidTask, status: invStatus };
@@ -168,11 +172,20 @@ invalidStatuses.forEach(invStatus => {
   }
 });
 
-// Test Case 6: Task with ALL VALID statuses (TODO, WIP, Review, Blocked, Done)
-const validStatuses = ['TODO', 'WIP', 'Review', 'Blocked', 'Done'];
+try {
+  assert.strictEqual(evaluateTaskRule({ ...baseValidTask, priority: 'urgent' }), false, 'Invalid priority must fail validation');
+  recordTest('Task with invalid priority fails validation', true);
+} catch (e) {
+  recordTest('Task with invalid priority fails validation', false, e.message);
+}
+
+// Test Case 6: All formal states require assignment and due date except backlog.
+const validStatuses = ['backlog', 'todo', 'in_progress', 'review', 'blocked', 'done'];
 validStatuses.forEach(valStatus => {
   try {
-    const taskWithValidStatus = { ...baseValidTask, status: valStatus };
+    const taskWithValidStatus = valStatus === 'backlog'
+      ? { ...baseValidTask, status: valStatus }
+      : { ...baseValidTask, status: valStatus, assignees: ['山口'], dueDate: '2026-09-30' };
     const isValid = evaluateTaskRule(taskWithValidStatus);
     assert.strictEqual(isValid, true, `Task with status '${valStatus}' must pass validation`);
     recordTest(`Task with valid status '${valStatus}' passes validation`, true);

@@ -4,5 +4,27 @@
   },
   "functions": {
     "source": "functions"
+  },
+  "hosting": {
+    "public": "hosting-public",
+    "predeploy": "node scripts/build-hosting.cjs",
+    "cleanUrls": true,
+    "ignore": [
+      "firebase.json",
+      ".firebaserc",
+      ".git/**",
+      ".github/**",
+      ".agents/**",
+      "functions/**",
+      "node_modules/**",
+      "test-results/**",
+      "tests/**",
+      "docs/**",
+      "*.md",
+      "*.spec.js",
+      "test_*.js",
+      "temp_pull/**"
+      ,"gas/**", "gas-deploy/**", ".vercel/**", ".firebase/**", ".gitignore", "scripts/**", "*.py", "package*.json", "playwright.config.js", "database.rules.json"
+    ]
   }
 }

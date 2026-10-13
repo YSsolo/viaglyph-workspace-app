@@ -58,7 +58,7 @@ function populateTaskSelect(){
     if (selectedTask) available.push(selectedTask);
   }
   const newHtml = '<option value="">-- タスクを選択 --</option>'+
-    available.map(t=>`<option value="${parseInt(t.id)}">${escH(t.title)}</option>`).join('');
+    available.map(t=>`<option value="${escH(t.id)}">${escH(t.title)}</option>`).join('');
   if (sel.innerHTML !== newHtml) {
     sel.innerHTML = newHtml;
     if (currVal && Array.from(sel.options).some(o => String(o.value) === String(currVal))) {
@@ -68,7 +68,8 @@ function populateTaskSelect(){
 }
 function submitRecord(e){
   e.preventDefault();
-  const taskId=parseInt(document.getElementById('rec-task').value);
+  // PM v2 uses UUID task IDs; preserve string IDs instead of coercing to numbers.
+  const taskId=document.getElementById('rec-task').value;
   const hours=parseInt(document.getElementById('rec-hours').value)||0;
   const mins=parseInt(document.getElementById('rec-minutes').value)||0;
   const totalMins=hours*60+mins;
@@ -548,28 +549,8 @@ function toast(msg) {
 }
 // ─── LOGIN ───
 async function handleLogin(e){
-  e.preventDefault();
-  const email=document.getElementById('login-email').value.trim();
-  const password=document.getElementById('login-password').value;
-  const errEl=document.getElementById('login-error');
-  const btn=document.getElementById('login-btn');
-  btn.textContent='ログイン中...';btn.disabled=true;
-  errEl.style.display='none';
-  const res=await API.login(email,password);
-  if(res.success){
-    currentUser=res.user.short;
-    document.getElementById('user-display').textContent=res.user.emoji+' '+res.user.short;
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('app').style.display='flex';
-    renderAll();
-    if(API.isOnline()){
-      API.initRealtimeListeners();
-      API.syncAll().then(()=>renderAll()).catch(()=>{});
-    }
-  } else {
-    errEl.textContent=res.error;errEl.style.display='block';
-  }
-  btn.textContent='ログイン';btn.disabled=false;
+  e?.preventDefault();
+  return window.handleGitHubLogin?.();
 }
 // ─── INIT ───
 document.addEventListener('DOMContentLoaded',async()=>{
@@ -607,10 +588,6 @@ document.addEventListener('DOMContentLoaded',async()=>{
 // ─── SETTINGS ───
 function saveSettings() {
   const settings = {
-    slackWebhook: document.getElementById('setting-slack-webhook')?.value || '',
-    slackMethod: document.querySelector('input[name="slack-method"]:checked')?.value || 'webhook',
-    slackChannel: document.getElementById('setting-slack-channel')?.value || '',
-    discordWebhook: document.getElementById('setting-discord-webhook')?.value || '',
     notifyStandup: document.getElementById('notify-standup')?.checked ?? true,
     notifyTaskDone: document.getElementById('notify-task-done')?.checked ?? true,
     notifyDaily: document.getElementById('notify-daily')?.checked ?? true,
@@ -627,11 +604,6 @@ function loadSettings() {
   try {
     const s = JSON.parse(raw);
     const set = (id, val) => { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = val; else el.value = val || ''; }};
-    set('setting-slack-webhook', s.slackWebhook);
-    const methodRadio = document.querySelector(`input[name="slack-method"][value="${s.slackMethod || 'webhook'}"]`);
-    if (methodRadio) methodRadio.checked = true;
-    set('setting-slack-channel', s.slackChannel);
-    set('setting-discord-webhook', s.discordWebhook);
     set('notify-standup', s.notifyStandup);
     set('notify-task-done', s.notifyTaskDone);
     set('notify-daily', s.notifyDaily);
