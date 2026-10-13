@@ -61,17 +61,25 @@ test('native server SDK applies external changes from a cold transaction cache',
     const db = app.database();
     const worker = nativeWorker(db);
     await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
-      issue: { number: 7, html_url: task.github.url, title: 'After', state: 'closed', assignees: [{ login: 'YSsolo' }], milestone: { number: 1 }, updated_at: '2026-10-13T01:00:00Z' } });
+      issue: { number: 7, html_url: task.github.url, title: 'After', state: 'closed', closed_at: '2026-10-12T15:00:00Z', assignees: [{ login: 'YSsolo' }], milestone: { number: 1 }, updated_at: '2026-10-13T01:00:00Z' } });
     await worker.applyMilestoneWebhook({ expectedRecordId: 'm1', expectedUpdatedAt: 'r1', repository: { full_name: 'YSsolo/repo' },
       milestone: { number: 1, title: 'After', state: 'open', due_on: '2026-10-17T00:00:00Z', updated_at: '2026-10-13T01:00:00Z' } });
     const result = (await db.ref('pm').get()).val();
     assert.equal(result.tasks.t1.title, 'After');
     assert.equal(result.tasks.t1.status, 'done');
+    assert.equal(result.tasks.t1.completedAt, '2026-10-12T15:00:00Z');
     assert.equal(result.tasks.t1.dueDate, '2026-10-13');
     assert.equal(result.milestones.m1.name, 'After');
     assert.equal(result.milestones.m1.dueDate, '2026-10-17');
     assert.equal(result.milestones.m1.status, 'open');
     assert.equal(result.milestones.m1.successCriteria, 'LOCAL_ONLY');
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: result.tasks.t1.updatedAt,
+      repository: { full_name: 'YSsolo/repo' }, issue: { number: 7, html_url: task.github.url, title: 'Reopened',
+        state: 'open', closed_at: null, assignees: [{ login: 'YSsolo' }], updated_at: '2026-10-14T01:00:00Z' } });
+    const reopened = (await db.ref('pm/tasks/t1').get()).val();
+    assert.equal(reopened.status, 'todo');
+    assert.equal(reopened.completedAt, undefined, 'native RTDB null writes remove completion timestamp');
+    assert.equal(reopened.dueDate, '2026-10-13');
   } finally { await app.delete(); }
 });
 
