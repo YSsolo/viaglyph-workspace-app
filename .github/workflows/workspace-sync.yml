@@ -1,0 +1,44 @@
+name: Workspace synchronization
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+    - cron: '0 0 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      project_id:
+        type: string
+        default: ''
+        description: Optional Project ID for a bounded acceptance run (no Slack digest)
+      send_digest:
+        type: boolean
+        default: false
+        description: Send today's Slack digest
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: workspace-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WORKSPACE_DATABASE_URL: https://viaglyph-workspace-default-rtdb.firebaseio.com
+      GITHUB_TOKEN_YSSOLO: ${{ secrets.WORKSPACE_GH_PAT_YSSOLO }}
+      GITHUB_TOKEN_GANDT: ${{ secrets.WORKSPACE_GH_PAT_GANDT }}
+      GITHUB_TOKEN_SHOTA656: ${{ secrets.WORKSPACE_GH_PAT_SHOTA656 }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      WORKSPACE_SEND_DIGEST: ${{ github.event.schedule == '0 0 * * 1-5' || inputs.send_digest == true }}
+      WORKSPACE_SYNC_PROJECT_ID: ${{ inputs.project_id || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - run: npm --prefix functions ci
+      - run: node scripts/actions-sync.cjs

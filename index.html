@@ -9,12 +9,12 @@
 <!-- CSP: スクリプト実行元を制限 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://script.google.com;
+  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://script.google.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
-  connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://script.google.com https://script.googleusercontent.com https://hooks.slack.com https://discord.com wss://*.firebaseio.com;
+  connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://apis.google.com https://script.google.com https://script.googleusercontent.com https://*.cloudfunctions.net https://hooks.slack.com https://discord.com wss://*.firebaseio.com;
   img-src 'self' data: https:;
-  frame-src 'none';
+  frame-src https://viaglyph-workspace.firebaseapp.com https://viaglyph-workspace.web.app https://github.com https://*.firebaseapp.com https://*.web.app;
   object-src 'none';
   base-uri 'self';
 "/>
@@ -25,9 +25,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="style.css?v=3"/>
 <link rel="stylesheet" href="canvas.css?v=3"/>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<link rel="stylesheet" href="pm.css?v=1"/>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+<script src="runtime-config.js"></script>
 </head>
 <body>
 
@@ -37,19 +40,11 @@
     <div class="login-logo">🧠</div>
     <h1 class="login-title">ViaGLYPH</h1>
     <p class="login-subtitle">Workspace</p>
-    <form id="login-form" onsubmit="handleLogin(event)">
-      <div class="form-group">
-        <label class="form-label">メールアドレス</label>
-        <input class="form-input" type="email" id="login-email" placeholder="email@example.com" required autocomplete="email"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">パスワード</label>
-        <input class="form-input" type="password" id="login-password" placeholder="パスワード" required autocomplete="current-password"/>
-      </div>
+    <div id="login-form">
       <div id="login-error" style="color:var(--error);font-size:0.8rem;margin-bottom:8px;display:none"></div>
-      <button type="submit" class="btn-submit" id="login-btn">ログイン</button>
-    </form>
-    <p class="login-hint">パスワードを入力してください</p>
+      <button type="button" class="btn-submit github-login-btn" id="login-btn" onclick="handleGitHubLogin()">GitHubでログイン</button>
+    </div>
+    <p class="login-hint">許可されたViaGLYPHメンバーのみ利用できます</p>
   </div>
 </div>
 
@@ -60,7 +55,7 @@
       <h1 class="header-title">Workspace</h1>
     </div>
     <div class="header-right">
-      <div class="ctx-toggle">
+      <div class="ctx-toggle" style="display:none" aria-hidden="true">
         <button class="ctx-btn active" id="ctx-dev" onclick="setCtx('dev')">⚙️ 開発</button>
         <button class="ctx-btn" id="ctx-biz" onclick="setCtx('biz')">📋 一般</button>
       </div>
@@ -125,6 +120,8 @@
 
     <!-- ══ KANBAN ══ -->
     <section id="view-kanban" class="view">
+      <div id="pm-tasks"></div>
+      <div class="legacy-pm-view">
       <div class="view-header">
         <h2 id="kanban-title">看板</h2>
         <p class="view-subtitle">ドラッグしてDoneに移動→日報に自動反映</p>
@@ -162,6 +159,7 @@
           <div class="daily-section-title">💭 メモ</div>
           <textarea class="daily-memo" id="daily-memo" placeholder="気づきや共有事項..."></textarea>
         </div>
+      </div>
       </div>
     </section>
 
@@ -218,18 +216,21 @@
 
     <!-- ══ GOALS ══ -->
     <section id="view-goals" class="view">
+      <div id="pm-projects"></div>
+      <div class="legacy-pm-view">
       <div class="view-header">
         <h2>🎯 目標</h2>
         <p class="view-subtitle">プロジェクト → 大目標 → 中目標 → タスク</p>
       </div>
       <div id="goals-tree" class="goals-tree"></div>
       <button class="btn-submit" style="background:transparent;color:var(--primary);border:1px dashed var(--neutral-border);margin-top:12px" onclick="openGoalModal('project')">＋ プロジェクトを追加</button>
+      </div>
     </section>
 
     <!-- ══ MEMBERS ══ -->
     <section id="view-members" class="view active">
-      <div class="view-header"><h2>メンバー</h2><p class="view-subtitle">チームの稼働状況</p></div>
-      <div id="member-list"></div>
+      <div id="pm-dashboard"></div>
+      <div id="member-list" class="legacy-pm-view"></div>
     </section>
 
     <!-- ══ SETTINGS ══ -->
@@ -239,6 +240,8 @@
         <p class="view-subtitle">外部連携・通知設定</p>
       </div>
 
+      <!-- Legacy token configuration is deliberately inactive. Secrets belong in Secret Manager. -->
+      <template id="legacy-insecure-integrations">
       <!-- Slack連携 -->
       <div style="background:var(--glass-bg,rgba(255,255,255,.85));border:1px solid var(--neutral-border,#e2e8f0);border-radius:14px;padding:20px;margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
@@ -375,17 +378,18 @@
           <div style="font-size:.75rem;color:var(--text-secondary)">Firebase: viaglyph-workspace</div>
         </div>
       </div>
+      </template>
     </section>
 
   </main>
 
   <!-- Bottom Navigation -->
   <nav class="bottom-nav">
-    <button class="nav-item active" data-view="members"><span class="nav-icon">👥</span><span class="nav-label">メンバー</span></button>
-    <button class="nav-item" data-view="kanban"><span class="nav-icon">🗂</span><span class="nav-label">看板</span></button>
-    <button class="nav-item nav-record" data-view="record"><span class="nav-icon-record">✏️</span><span class="nav-label">記録</span></button>
-    <button class="nav-item" data-view="canvas"><span class="nav-icon">📅</span><span class="nav-label">会議</span></button>
-    <button class="nav-item" data-view="goals"><span class="nav-icon">🎯</span><span class="nav-label">目標</span></button>
+    <button class="nav-item active" data-view="members"><span class="nav-icon">◫</span><span class="nav-label">Dashboard</span></button>
+    <button class="nav-item" data-view="goals"><span class="nav-icon">◆</span><span class="nav-label">Projects</span></button>
+    <button class="nav-item" data-view="kanban"><span class="nav-icon">✓</span><span class="nav-label">Tasks</span></button>
+    <button class="nav-item" data-view="canvas"><span class="nav-icon">▣</span><span class="nav-label">Meetings</span></button>
+    <button class="nav-item nav-record" data-view="record"><span class="nav-icon-record">◷</span><span class="nav-label">Work Log</span></button>
 
   </nav>
 </div>
@@ -582,9 +586,47 @@
 
 <div id="toast" class="toast"></div>
 
+<!-- PM MODALS -->
+<div class="modal-overlay" id="pm-project-modal"><div class="modal-sheet pm-modal-sheet">
+  <h3 id="pm-project-modal-title">Projectを追加</h3>
+  <input type="hidden" id="pm-project-id"/>
+  <div class="form-group"><label class="form-label">Project名</label><input class="form-input" id="pm-project-name" maxlength="120"/></div>
+  <div class="pm-form-grid"><div class="form-group"><label class="form-label">GitHub owner</label><input class="form-input" id="pm-project-owner" placeholder="GandT"/></div><div class="form-group"><label class="form-label">repository</label><input class="form-input" id="pm-project-repo" placeholder="vgl-developers"/></div></div>
+  <div class="modal-actions"><button class="btn-secondary" onclick="PM.closeModal('pm-project-modal')">キャンセル</button><button class="btn-submit" onclick="PM.saveProject()">保存</button></div>
+</div></div>
+
+<div class="modal-overlay" id="pm-milestone-modal"><div class="modal-sheet pm-modal-sheet">
+  <h3 id="pm-milestone-modal-title">Milestoneを追加</h3>
+  <input type="hidden" id="pm-milestone-id"/>
+  <div class="form-group"><label class="form-label">Project</label><select class="form-select" id="pm-milestone-project"></select></div>
+  <div class="form-group"><label class="form-label">Milestone名</label><input class="form-input" id="pm-milestone-name" maxlength="120"/></div>
+  <div class="form-group"><label class="form-label">完了条件</label><textarea class="form-textarea" id="pm-milestone-criteria" rows="3"></textarea></div>
+  <div class="form-group"><label class="form-label">期限</label><input class="form-input" type="date" id="pm-milestone-due"/></div>
+  <div class="modal-actions"><button class="btn-secondary" onclick="PM.closeModal('pm-milestone-modal')">キャンセル</button><button class="btn-submit" onclick="PM.saveMilestone()">保存</button></div>
+</div></div>
+
+<div class="modal-overlay" id="pm-task-modal"><div class="modal-sheet pm-modal-sheet">
+  <h3 id="pm-task-modal-title">Taskを追加</h3>
+  <input type="hidden" id="pm-task-id"/>
+  <div class="form-group"><label class="form-label">タイトル</label><input class="form-input" id="pm-task-title" maxlength="500"/></div>
+  <div class="form-group"><label class="form-label">Project</label><select class="form-select" id="pm-task-project" onchange="PM.populateMilestones(this.value)"></select></div>
+  <div class="form-group"><label class="form-label">Milestone</label><select class="form-select" id="pm-task-milestone"></select></div>
+  <div class="pm-form-grid"><div class="form-group"><label class="form-label">状態</label><select class="form-select" id="pm-task-status"><option value="backlog">Backlog</option><option value="todo">Todo</option><option value="in_progress">In Progress</option><option value="review">Review</option><option value="blocked">Blocked</option><option value="done">Done</option></select></div><div class="form-group"><label class="form-label">優先度</label><select class="form-select" id="pm-task-priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></div></div>
+  <div class="form-group"><label class="form-label">担当者</label><div id="pm-task-assignees" class="quick-tags"><button type="button" class="tag" data-member="山口" onclick="this.classList.toggle('selected')">🌿 山口</button><button type="button" class="tag" data-member="市川" onclick="this.classList.toggle('selected')">🔥 市川</button><button type="button" class="tag" data-member="村山" onclick="this.classList.toggle('selected')">💎 村山</button></div></div>
+  <div class="form-group"><label class="form-label">期限</label><input class="form-input" type="date" id="pm-task-due"/></div>
+  <div class="form-group"><label class="form-label">説明</label><textarea class="form-textarea" id="pm-task-description" rows="3"></textarea></div>
+  <div class="modal-actions"><button class="btn-secondary" onclick="PM.closeModal('pm-task-modal')">キャンセル</button><button class="btn-submit" id="pm-task-save-button" onclick="PM.saveTask()">保存してIssue化</button></div>
+</div></div>
+
+<div class="modal-overlay" id="pm-migration-modal"><div class="modal-sheet pm-modal-sheet pm-migration-sheet">
+  <h3>旧データ移行プレビュー</h3><div id="pm-migration-preview"></div>
+  <div class="modal-actions"><button class="btn-secondary" onclick="PM.closeModal('pm-migration-modal')">閉じる</button><button class="btn-submit" id="pm-migration-confirm" onclick="PM.confirmMigration()">バックアップして移行</button></div>
+</div></div>
+
 <script src="api.js"></script>
 <script src="store.js"></script>
 <script src="views.js"></script>
 <script src="canvas.js"></script>
+<script src="pm.js"></script>
 </body>
 </html>

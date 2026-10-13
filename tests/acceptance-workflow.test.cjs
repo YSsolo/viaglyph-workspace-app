@@ -1,0 +1,32 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+test('the manual acceptance workflow pins reviewed code and one Project with no Slack or deployment', () => {
+  const filename = path.resolve(__dirname, '../.github/workflows/workspace-acceptance.yml');
+  assert.ok(fs.existsSync(filename), 'A separate manual acceptance execution path is required');
+  const source = fs.readFileSync(filename, 'utf8');
+  assert.match(source, /on:\s*\n\s+workflow_dispatch:/);
+  assert.doesNotMatch(source, /\b(schedule|pull_request|push|environment):/);
+  assert.ok(source.includes("github.repository == 'YSsolo/viaglyph-workspace-app' && github.ref == 'refs/heads/master'"));
+  assert.ok(source.includes('ref: f7dc57574a754ad4fd29a33a6fad3c62d5e391d4'));
+  assert.ok(source.includes('persist-credentials: false'));
+  assert.ok(source.includes('group: workspace-sync'));
+  assert.ok(source.includes('WORKSPACE_SYNC_PROJECT_ID: b819c1c6-d932-44ae-9677-6329faf96a16'));
+  assert.ok(source.includes("WORKSPACE_SEND_DIGEST: 'false'"));
+  assert.ok(source.includes('GITHUB_TOKEN_YSSOLO: ${{ secrets.WORKSPACE_GH_PAT_YSSOLO }}'));
+  assert.doesNotMatch(source, /SLACK_BOT_TOKEN|firebase-tools.*deploy|firebase deploy|migrate-data/);
+  assert.ok(source.indexOf('node --test') < source.indexOf('google-github-actions/auth@'));
+  assert.ok(source.includes('tests/worker-wif-runtime.test.cjs'));
+  assert.ok(source.includes('tests/record-transaction.test.cjs'));
+  assert.ok(source.includes('tests/dashboard-dates.test.cjs'));
+  assert.ok(source.includes('tests/sync-retry-intent.test.cjs'));
+  assert.ok(source.indexOf('tests/sync-retry-intent.test.cjs') < source.indexOf('google-github-actions/auth@'));
+  assert.ok(source.indexOf('tests/dashboard-dates.test.cjs') < source.indexOf('google-github-actions/auth@'));
+  assert.ok(source.indexOf('tests/record-transaction.test.cjs') < source.indexOf('google-github-actions/auth@'));
+  assert.ok(source.indexOf('tests/worker-wif-runtime.test.cjs') < source.indexOf('google-github-actions/auth@'));
+  assert.ok(source.includes('id-token: write'));
+  assert.ok(source.includes('contents: read'));
+  assert.ok(source.includes('node scripts/actions-sync.cjs'));
+});

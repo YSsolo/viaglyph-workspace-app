@@ -3,7 +3,11 @@
 // ─── FIREBASE GLOBAL INITIALIZATION ───
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDS4v9y0FnUvY5MFxtypkWrrSAH8GMUCLY",
-  authDomain: "viaglyph-workspace.firebaseapp.com",
+  // Redirect auth helpers must share the production app's origin. Other hosts
+  // (including localhost) use the configured Firebase provider domain.
+  authDomain: typeof location !== 'undefined' && location.hostname === 'viaglyph-workspace.web.app'
+    ? 'viaglyph-workspace.web.app'
+    : 'viaglyph-workspace.firebaseapp.com',
   databaseURL: "https://viaglyph-workspace-default-rtdb.firebaseio.com",
   projectId: "viaglyph-workspace",
   storageBucket: "viaglyph-workspace.firebasestorage.app",
@@ -20,11 +24,12 @@ if (typeof firebase !== 'undefined') {
 const USER_KEY_MAP = { '山口': 'yamaguchi', '市川': 'ichikawa', '村山': 'murayama' };
 const USER_SHORT_MAP = { 'yamaguchi': '山口', 'ichikawa': '市川', 'murayama': '村山' };
 
-const PREDEFINED_USERS = {
-  'murayama@mtl.t.u-tokyo.ac.jp': { short: '村山', name: '村山 貴志', role: 'テックリード', emoji: '💎', bg: '#dbeafe' },
-  'shotaatut@gmail.com': { short: '市川', name: '市川 翔大', role: 'CEO / ビジネス', emoji: '🔥', bg: '#fef3c7' },
-  'siteiiryoubugaihinn2@gmail.com': { short: '山口', name: '山口 慧', role: 'エンジニア', emoji: '🌿', bg: '#dcfce7' }
-};
+async function workspaceAuthHeaders() {
+  const user = typeof firebase !== 'undefined' ? firebase.auth?.().currentUser : null;
+  if (!user) return { 'Content-Type': 'application/json' };
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` };
+}
+
 
 function normalizeGoals(data) {
   if (!data) return [];
@@ -78,46 +83,9 @@ const API = {
       typeof window !== 'undefined' && typeof window.firebaseDb !== 'undefined' && !!window.firebaseDb;
   },
 
-  // 1. LOGIN (RTDB / Predefined fallback)
+  // Legacy login is deliberately disabled. PM v2 uses Firebase GitHub OAuth in pm.js.
   async login(email, password) {
-    if (Date.now() < this._lockUntil) {
-      const sec = Math.ceil((this._lockUntil - Date.now()) / 1000);
-      return { success: false, error: `ログイン試行回数を超過しました。${sec}秒後に再試行してください` };
-    }
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    if (!/^[^@]+@[^@]+\.[^@]+$/.test(cleanEmail)) {
-      return { success: false, error: 'メールアドレスの形式が正しくありません' };
-    }
-
-    let user = PREDEFINED_USERS[cleanEmail];
-    if (!user && this.isOnline()) {
-      try {
-        const snap = await window.firebaseDb.ref('users').once('value');
-        const usersData = snap.val() || {};
-        const foundKey = Object.keys(usersData).find(k => usersData[k].email?.toLowerCase() === cleanEmail);
-        if (foundKey) user = usersData[foundKey];
-      } catch (e) {
-        console.warn('RTDB user fetch failed:', e);
-      }
-    }
-
-    if (user && password === 'viaglyph2026') {
-      this._loginAttempts = 0;
-      const token = 'rtdb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-      const sessionObj = { email: cleanEmail, ...user };
-      localStorage.setItem('vg_token', token);
-      localStorage.setItem('vg_session', JSON.stringify(sessionObj));
-      this.initRealtimeListeners();
-      return { success: true, token, user: sessionObj };
-    }
-
-    this._loginAttempts++;
-    if (this._loginAttempts >= this.MAX_ATTEMPTS) {
-      this._lockUntil = Date.now() + this.LOCK_DURATION;
-      this._loginAttempts = 0;
-      return { success: false, error: `ログイン試行回数を超過しました。30秒後に再試行してください` };
-    }
-    return { success: false, error: `メールアドレスまたはパスワードが正しくありません（残り${this.MAX_ATTEMPTS - this._loginAttempts}回）` };
+    return { success: false, error: 'GitHubでログインしてください' };
   },
 
   // 2. VALIDATE TOKEN
@@ -280,7 +248,6 @@ const API = {
 
   // 14. SLACK / DISCORD NOTIFICATION PROXIES (Cloud Functions Proxy)
   async sendSlackMessage(channel, messagePayload) {
-    console.log('Sending Slack message via Cloud Functions:', channel, messagePayload);
     const rawBaseUrl = (typeof window !== 'undefined' && window.FUNCTIONS_BASE_URL)
       ? window.FUNCTIONS_BASE_URL
       : 'https://us-central1-viaglyph-workspace.cloudfunctions.net';
@@ -297,7 +264,7 @@ const API = {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await workspaceAuthHeaders(),
         body: JSON.stringify(payload)
       });
 
@@ -323,7 +290,6 @@ const API = {
   },
 
   async createSlackCanvas(title, markdown, channel) {
-    console.log('Creating Slack canvas via Cloud Functions:', title, channel);
     const rawBaseUrl = (typeof window !== 'undefined' && window.FUNCTIONS_BASE_URL)
       ? window.FUNCTIONS_BASE_URL
       : 'https://us-central1-viaglyph-workspace.cloudfunctions.net';
@@ -340,7 +306,7 @@ const API = {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await workspaceAuthHeaders(),
         body: JSON.stringify(payload)
       });
 
@@ -479,7 +445,7 @@ const API = {
       localStorage.setItem('vg_goals', JSON.stringify(goalsArr));
       if (typeof renderGoals === 'function') renderGoals();
       const projPage = document.getElementById('project-page');
-      if (projPage && projPage.classList.contains('open') && typeof currentProjectId !== 'undefined' && currentProjectId && typeof openProjectPage === 'function') {
+      if (projPage?.classList?.contains?.('open') && typeof currentProjectId !== 'undefined' && currentProjectId && typeof openProjectPage === 'function') {
         openProjectPage(currentProjectId);
       }
     });
@@ -530,4 +496,3 @@ if (typeof window !== 'undefined') {
     }
   });
 }
-

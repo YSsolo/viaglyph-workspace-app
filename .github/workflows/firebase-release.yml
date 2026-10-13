@@ -1,0 +1,75 @@
+name: Firebase release
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix functions ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: node --test tests/sync-revision.test.cjs
+      - run: node --test tests/sync-error-redaction.test.cjs
+      - run: node --test tests/actions-secrets.test.cjs
+      - run: node --test tests/actions-scope.test.cjs
+      - run: node --test tests/record-transaction.test.cjs
+      - run: node --test tests/sync-record-target.test.cjs
+      - run: node --test tests/acceptance-workflow.test.cjs
+      - run: node --test tests/worker-wif-runtime.test.cjs
+      - run: node --test tests/hosting-security.test.cjs
+      - run: node --test tests/auth-domain.test.cjs
+      - run: node --test tests/auth-session.test.cjs
+      - run: node --test tests/migration.test.cjs
+      - run: node --test tests/dashboard-dates.test.cjs
+      - run: node --test tests/sync-retry-intent.test.cjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Native Firebase Rules and migration verification (demo only)
+        run: npx --yes firebase-tools@15.33.0 emulators:exec --config firebase.emulator.json --project demo-viaglyph-pm-tests --only database --non-interactive "node --test tests/rtdb-emulator.test.cjs"
+      - run: node scripts/build-hosting.cjs
+      - run: node --check pm.js && node --check api.js && node --check functions/index.js
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    env:
+      FIREBASE_PROJECT_ID: ${{ inputs.target == 'production' && vars.FIREBASE_PROJECT_ID_PRODUCTION || vars.FIREBASE_PROJECT_ID_STAGING }}
+      WORKSPACE_FUNCTIONS_BASE: ${{ inputs.target == 'production' && vars.WORKSPACE_FUNCTIONS_BASE_PRODUCTION || vars.WORKSPACE_FUNCTIONS_BASE_STAGING }}
+      WORKSPACE_HOSTING_ORIGIN: ${{ inputs.target == 'production' && vars.WORKSPACE_HOSTING_ORIGIN_PRODUCTION || vars.WORKSPACE_HOSTING_ORIGIN_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - run: npm ci
+      - run: npm --prefix functions ci
+      - run: npx --yes firebase-tools deploy --project "$FIREBASE_PROJECT_ID" --only database,hosting --non-interactive

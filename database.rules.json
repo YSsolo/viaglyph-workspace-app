@@ -1,69 +1,51 @@
 {
   "rules": {
+    ".read": "auth != null && (auth.token.workspaceMember === true || (auth.token.firebase.sign_in_provider === 'github.com' && (auth.token.firebase.identities['github.com'][0] === '174987576' || auth.token.firebase.identities['github.com'][0] === '19548351' || auth.token.firebase.identities['github.com'][0] === '286001688')))",
+    ".write": "auth != null && (auth.token.workspaceMember === true || (auth.token.firebase.sign_in_provider === 'github.com' && (auth.token.firebase.identities['github.com'][0] === '174987576' || auth.token.firebase.identities['github.com'][0] === '19548351' || auth.token.firebase.identities['github.com'][0] === '286001688')))",
     "users": {
-      ".read": true,
-      ".write": false,
-      "$user_id": {
-        ".validate": "newData.hasChildren(['short', 'name', 'role', 'emoji', 'bg'])",
-        "short": { ".validate": "newData.isString()" },
-        "name": { ".validate": "newData.isString()" },
-        "role": { ".validate": "newData.isString()" },
-        "emoji": { ".validate": "newData.isString()" },
-        "bg": { ".validate": "newData.isString()" }
-      }
+      ".write": false
     },
-    "tasks": {
-      ".read": true,
-      ".write": true,
-      "$ctx": {
-        ".validate": "$ctx == 'dev' || $ctx == 'biz'",
-        "$task_id": {
-          ".validate": "newData.hasChildren(['id', 'title', 'status', 'prio', 'assign', 'ctx'])",
-          "id": { ".validate": "newData.isNumber() || newData.isString()" },
-          "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500" },
-          "status": { ".validate": "newData.val() == 'TODO' || newData.val() == 'WIP' || newData.val() == 'Review' || newData.val() == 'Blocked' || newData.val() == 'Done'" },
-          "prio": { ".validate": "newData.val() == '高' || newData.val() == '中' || newData.val() == '低'" },
-          "assign": { ".validate": "newData.isString()" },
-          "due": { ".validate": "newData.isString() || !newData.exists()" },
-          "tags": { ".validate": "newData.isString() || newData.hasChildren() || !newData.exists()" },
-          "ctx": { ".validate": "newData.val() == 'dev' || newData.val() == 'biz'" },
-          "created_at": { ".validate": "newData.isString() || !newData.exists()" }
+    "pm": {
+      "projects": {
+        "$project_id": {
+          ".validate": "newData.hasChildren(['id', 'name', 'status', 'github', 'createdAt', 'updatedAt', 'updatedBy'])",
+          "id": { ".validate": "newData.val() == $project_id" },
+          "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+          "status": { ".validate": "newData.val() == 'active' || newData.val() == 'paused' || newData.val() == 'closed'" },
+          "github": { ".validate": "newData.hasChildren(['owner', 'repo'])" }
         }
+      },
+      "milestones": {
+        "$milestone_id": {
+          ".validate": "newData.hasChildren(['id', 'projectId', 'name', 'status', 'createdAt', 'updatedAt', 'updatedBy'])",
+          "id": { ".validate": "newData.val() == $milestone_id" },
+          "projectId": { ".validate": "newData.isString() && newData.val().length > 0" },
+          "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+          "status": { ".validate": "newData.val() == 'open' || newData.val() == 'closed'" },
+          "dueDate": { ".validate": "newData.isString()" }
+        }
+      },
+      "tasks": {
+        "$task_id": {
+          ".validate": "newData.hasChildren(['id', 'projectId', 'milestoneId', 'title', 'status', 'dueDate', 'priority', 'createdAt', 'updatedAt', 'updatedBy']) && newData.child('id').val() == $task_id && newData.child('projectId').isString() && newData.child('milestoneId').isString() && (newData.child('status').val() == 'backlog' || (newData.child('assignees').hasChildren() && newData.child('dueDate').isString() && newData.child('dueDate').val().length > 0))",
+          "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500" },
+          "status": { ".validate": "newData.val() == 'backlog' || newData.val() == 'todo' || newData.val() == 'in_progress' || newData.val() == 'review' || newData.val() == 'blocked' || newData.val() == 'done'" },
+          "priority": { ".validate": "newData.val() == 'high' || newData.val() == 'medium' || newData.val() == 'low'" },
+          "dueDate": { ".validate": "newData.isString()" }
+        }
+      },
+      "settings": {
+        "slackChannel": { ".validate": "newData.isString()" },
+        "timezone": { ".validate": "newData.val() == 'Asia/Tokyo'" }
       }
     },
     "workLogs": {
-      ".read": true,
-      ".write": true,
       "$log_id": {
         ".validate": "newData.hasChildren(['taskId', 'date', 'minutes', 'user'])",
         "taskId": { ".validate": "newData.isNumber() || newData.isString()" },
         "date": { ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)" },
-        "minutes": { ".validate": "newData.isNumber() && newData.val() > 0" },
-        "user": { ".validate": "newData.val() == '山口' || newData.val() == '市川' || newData.val() == '村山'" },
-        "comment": { ".validate": "newData.isString() || !newData.exists()" }
+        "minutes": { ".validate": "newData.isNumber() && newData.val() > 0" }
       }
-    },
-    "goals": {
-      ".read": true,
-      ".write": true
-    },
-    "memberStatus": {
-      ".read": true,
-      "$user_short": {
-        ".write": "$user_short == 'yamaguchi' || $user_short == 'ichikawa' || $user_short == 'murayama' || $user_short == '山口' || $user_short == '市川' || $user_short == '村山'",
-        ".validate": "newData.val() == 'online' || newData.val() == 'away' || newData.val() == 'offline'"
-      }
-    },
-    "dailyMemos": {
-      ".read": true,
-      ".write": true,
-      "$memo_key": {
-        ".validate": "newData.isString() && newData.val().length <= 5000"
-      }
-    },
-    "canvases": {
-      ".read": true,
-      ".write": true
     }
   }
 }

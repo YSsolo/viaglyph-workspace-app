@@ -1,6 +1,6 @@
 # ViaGLYPH Workspace App
 
-ViaGLYPH Workspace App は、チーム（3名固定）向けの日報入力・作業ログ記録・Kanbanタスク管理・目標ツリー管理・会議キャンバス機能を備えたリアルタイムWebアプリケーションです。
+ViaGLYPH Workspace App は、3名チーム向けのプロジェクト運転盤です。会議で決めたことを `Project → Milestone → Task` の単一モデルへ登録し、担当・期限・ブロッカー・GitHub Issueをまとめて追跡します。
 
 バックエンドは Firebase Realtime Database および Firebase Cloud Functions (v2) を基盤としており、複数ブラウザ間での即時リアルタイム同期とSlack/Discord通知プロキシ連携を実現しています。
 
@@ -19,8 +19,9 @@ ViaGLYPH Workspace App は、チーム（3名固定）向けの日報入力・�
 ┌─────────────────────────────┐   ┌─────────────────────────────┐
 │ Firebase Realtime Database  │   │   Firebase Cloud Functions  │
 │ (viaglyph-workspace-default)│   │  - sendSlackMessage         │
-│  - /users                   │   │  - createSlackCanvas        │
-│  - /tasks/dev & /biz        │   └──────────────┬──────────────┘
+│  - /pm/projects             │   │  - createSlackCanvas        │
+│  - /pm/milestones           │   │  - GitHub同期 / Webhook     │
+│  - /pm/tasks                │   └──────────────┬──────────────┘
 │  - /workLogs                │                  │
 │  - /goals                   │                  ▼
 │  - /memberStatus            │         Slack API / Discord
@@ -35,13 +36,14 @@ ViaGLYPH Workspace App は、チーム（3名固定）向けの日報入力・�
 
 ```
 viaGlyph_workspace_app/
-├── index.html            # メインUI（5タブ構成・モーダル）
+├── index.html            # Dashboard / Projects / Tasks / Meetings / Work Log
 ├── api.js                # Firebase Singleton & RTDB/Functions API層
 ├── store.js              # クライアントデータストア & イベント処理
 ├── views.js              # DOM描画 & ビューイベントハンドラー
 ├── canvas.js             # リアルタイム会議キャンバス
 ├── style.css             # アプリケーション共通スタイル
 ├── canvas.css            # キャンバス専用スタイル
+├── pm.js / pm.css        # PM v2のデータ操作・運転盤UI
 ├── database.rules.json   # RTDB セキュリティルール (Schema Validation)
 ├── firebase.json         # Firebase プロジェクト設定
 ├── package.json          # npm スクリプト & 依存関係
@@ -98,17 +100,19 @@ npm run test:e2e
 
 ---
 
-## 👥 チームメンバー (固定3名)
+## 👥 認証とGitHub連携
 
-| メール | 名前 | 略称 | 役割 | パスワード |
-|--------|------|------|------|-----------|
-| `shotaatut@gmail.com` | 市川 翔大 | 市川 | CEO / ビジネス | `viaglyph2026` |
-| `murayama@mtl.t.u-tokyo.ac.jp` | 村山 貴志 | 村山 | テックリード | `viaglyph2026` |
-| `siteiiryoubugaihinn2@gmail.com` | 山口 慧 | 山口 | エンジニア | `viaglyph2026` |
+- ログインはFirebase AuthenticationのGitHub Providerを使います。許可するGitHub numeric IDはCloud Functionの `GITHUB_MEMBERS` に限定します。
+- GitHub API用Fine-grained PATはownerごとにFirebase Secret Managerへ登録します。`GITHUB_TOKEN_GANDT`、`GITHUB_TOKEN_YSSOLO`、`GITHUB_TOKEN_SHOTA656` を使います。
+- Webhookは `GITHUB_WEBHOOK_SECRET` で `X-Hub-Signature-256` を検証します。ブラウザ・Realtime Database・Issue本文にPATやWebhook Secretを置かないでください。
+- Slack日次通知は `pm/settings/slackChannel` に保存したチャンネルへ、平日9:00 JSTに送信します。
 
 ---
 
 ## 🔐 セキュリティ & デプロイ
 
-- **Firebase Realtime Database Rules**: `database.rules.json` により、パス別の型検証・必須フィールド検証・ステータス文字列検証を適用済み。
+- **Firebase Realtime Database Rules**: `database.rules.json` により、GitHub OAuth後に付与される `workspaceMember` claimを必須にします。
 - **Slack / Discord プロキシ**: `functions/index.js` により、Bot Token をサーバーサイドで保護し、CORS エラーを回避して外部通知を投稿。
+- **PM同期**: TaskはIssue、MilestoneはGitHub Milestoneへ同期します。GitHub障害時はTaskを保存し、`pending/error` 状態から15分ごとに再試行します。
+- **正式入口**: チーム利用は Firebase Hosting URL を使用します。`localhost` は開発専用です。
+- **リリース**: GitHub Actions の `Firebase release` だけが Functions、Rules、Hosting を配布します。必要なOIDC・Secretsの初期設定は [release runbook](docs/release-runbook.md) を参照してください。
