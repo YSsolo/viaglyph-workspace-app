@@ -68,6 +68,28 @@ test('external Issue and Milestone pulls populate transaction caches before guar
   assert.equal(listeners.size, 0);
 });
 
+test('GitHub Review observations retain residence across edits and clear on exit', async () => {
+  const github = { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' };
+  const task = { id: 't1', projectId: 'p1', status: 'todo', updatedAt: 'r1', syncStatus: 'synced', github };
+  const data = { 'pm/tasks': { t1: task }, 'pm/tasks/t1': task, 'pm/milestones': {},
+    'pm/projects': { p1: { github: { owner: 'YSsolo', repo: 'repo' } } } };
+  const { worker } = loadWorker(data);
+  const pull = async status => {
+    data['pm/tasks'].t1 = data['pm/tasks/t1'];
+    await worker.applyIssueWebhook({ expectedRecordId: 't1', expectedUpdatedAt: data['pm/tasks/t1'].updatedAt,
+      repository: { full_name: 'YSsolo/repo' }, issue: { number: 7, html_url: github.url, title: 'Edit', state: 'open',
+        labels: [{ name: `workspace:${status}` }], updated_at: '2026-10-13T01:00:00Z' } });
+  };
+  const observationStart = Date.now();
+  await pull('review');
+  assert.ok(Date.parse(data['pm/tasks/t1'].reviewStartedAt) >= observationStart, 'start from observation, not an unrelated remote edit');
+  data['pm/tasks/t1'].reviewStartedAt = '2026-10-11T03:00:00Z';
+  await pull('review');
+  assert.equal(data['pm/tasks/t1'].reviewStartedAt, '2026-10-11T03:00:00Z');
+  await pull('todo');
+  assert.equal(data['pm/tasks/t1'].reviewStartedAt, null);
+});
+
 test('GitHub completion uses closed_at, survives Done edits and clears on reopen', async () => {
   const github = { number: 7, url: 'https://github.com/YSsolo/repo/issues/7' };
   const task = { id: 't1', projectId: 'p1', status: 'todo', updatedAt: 'r1', syncStatus: 'synced', github };

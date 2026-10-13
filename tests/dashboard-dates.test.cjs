@@ -25,6 +25,43 @@ function dashboardAt(instant, tasks) {
 
 const ids = tasks => Array.from(tasks, task => task.id);
 
+test('Review residence is not reset by a recent Task edit', () => {
+  const pm = dashboardAt('2026-10-13T03:00:00Z', [{ id: 'review', status: 'review',
+    reviewStartedAt: '2026-10-11T03:00:00Z', updatedAt: '2026-10-13T02:59:00Z' }]);
+  assert.deepEqual(ids(pm.alerts().review), ['review']);
+  assert.equal(pm.projectHealth({ id: 'p1' }), 'yellow');
+});
+
+test('Review transitions start a residence clock, retain it and clear it on leaving', async () => {
+  const pm = dashboardAt('2026-10-13T03:00:00Z', [{ id: 'task', status: 'todo', assignees: ['山口'], dueDate: '2026-10-13' }]);
+  pm.metadata = () => ({ updatedAt: '2026-10-13T03:00:00Z', updatedBy: '山口' });
+  pm.update = async (_path, patch) => Object.assign(pm.state.tasks.task, patch);
+  pm.syncTask = async () => {};
+  await pm.updateTaskStatus('task', 'review');
+  assert.equal(pm.task('task').reviewStartedAt, '2026-10-13T03:00:00.000Z');
+  pm.task('task').reviewStartedAt = '2026-10-11T03:00:00Z';
+  await pm.updateTaskStatus('task', 'review');
+  assert.equal(pm.task('task').reviewStartedAt, '2026-10-11T03:00:00Z');
+  await pm.updateTaskStatus('task', 'todo');
+  assert.equal(pm.task('task').reviewStartedAt, null);
+});
+
+test('Task editing retains Review residence until the Task leaves Review', async () => {
+  const pm = dashboardAt('2026-10-13T03:00:00Z', []);
+  pm.state.projects.p1 = { github: { owner: 'YSsolo', repo: 'viaglyph-workspace-app' } };
+  pm.metadata = () => ({ updatedAt: '2026-10-13T03:00:00Z', updatedBy: '山口' });
+  pm.write = async (_path, record) => { pm.state.tasks[record.id] = record; };
+  pm.syncTask = async () => {};
+  const input = { id: 'task', projectId: 'p1', milestoneId: 'm1', title: 'Review', status: 'review', assignees: ['山口'], dueDate: '2026-10-13', silent: true };
+  await pm.persistTask(input);
+  assert.equal(pm.task('task').reviewStartedAt, '2026-10-13T03:00:00.000Z');
+  pm.task('task').reviewStartedAt = '2026-10-11T03:00:00Z';
+  await pm.persistTask({ ...input, title: '編集' });
+  assert.equal(pm.task('task').reviewStartedAt, '2026-10-11T03:00:00Z');
+  await pm.persistTask({ ...input, status: 'todo' });
+  assert.equal(pm.task('task').reviewStartedAt, null);
+});
+
 test('Task editing records completion, preserves it on edits and clears it on reopen', async () => {
   const pm = dashboardAt('2026-10-13T03:00:00Z', []);
   pm.state.projects.p1 = { github: { owner: 'YSsolo', repo: 'viaglyph-workspace-app' } };

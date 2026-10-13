@@ -432,6 +432,9 @@ async function applyIssueWebhook(payload) {
   patch.completedAt = status === 'done'
     ? (task.status === 'done' ? task.completedAt || null
       : (typeof issue.closed_at === 'string' && Number.isFinite(Date.parse(issue.closed_at)) ? issue.closed_at : null)) : null;
+  // GitHub exposes no label-entry instant; track first observed Review residence.
+  patch.reviewStartedAt = status === 'review'
+    ? (task.status === 'review' ? task.reviewStartedAt || new Date().toISOString() : new Date().toISOString()) : null;
   if (payload.expectedUpdatedAt !== undefined) {
     await applyExternalRevision(db.ref(`pm/tasks/${task.id}`), payload.expectedUpdatedAt, patch);
   } else {

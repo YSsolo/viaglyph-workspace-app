@@ -128,6 +128,8 @@
       const task = { ...(previous || {}), id, projectId, milestoneId, title, description, status, assignees, dueDate: dueDate || '', priority, sourceMeetingId: source.sourceMeetingId || previous?.sourceMeetingId || '', sourceMeetingDeleted: Boolean(previous?.sourceMeetingDeleted), createdAt: previous?.createdAt || now(), syncStatus: previous?.syncStatus === 'synced' ? 'pending' : (previous?.syncStatus || 'pending'), ...this.metadata() };
       task.completedAt = status === 'done'
         ? (previous?.status === 'done' ? previous.completedAt || null : now()) : null;
+      task.reviewStartedAt = status === 'review'
+        ? (previous?.status === 'review' ? previous.reviewStartedAt || now() : now()) : null;
       await this.write(`pm/tasks/${id}`, task);
       if (!source.silent) this.closeModal('pm-task-modal');
       this.syncTask(id).catch(() => {});
@@ -143,7 +145,9 @@
       }
       const completedAt = status === 'done'
         ? (task.status === 'done' ? task.completedAt || null : now()) : null;
-      await this.update(`pm/tasks/${id}`, { status, completedAt, syncStatus: 'pending', ...this.metadata() });
+      const reviewStartedAt = status === 'review'
+        ? (task.status === 'review' ? task.reviewStartedAt || now() : now()) : null;
+      await this.update(`pm/tasks/${id}`, { status, completedAt, reviewStartedAt, syncStatus: 'pending', ...this.metadata() });
       this.syncTask(id).catch(() => {});
     },
     async approveMilestone(id) {
@@ -219,7 +223,7 @@
         soon: active.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= tomorrowDate),
         week: active.filter(t => t.dueDate && t.dueDate >= weekStart && t.dueDate <= weekDate),
         blocked: active.filter(t => t.status === 'blocked'),
-        review: active.filter(t => t.status === 'review' && new Date(t.updatedAt || t.createdAt).getTime() <= reviewLimit),
+        review: active.filter(t => t.status === 'review' && new Date(t.reviewStartedAt || t.updatedAt || t.createdAt).getTime() <= reviewLimit),
         sync: this.tasks.filter(t => t.syncStatus === 'error'),
         // Old records without a completion instant are not fabricated from edits.
         completedWeek: this.tasks.filter(t => t.status === 'done' && t.completedAt
