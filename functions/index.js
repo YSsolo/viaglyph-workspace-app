@@ -314,7 +314,9 @@ async function syncMilestoneRecord(milestone) {
   const result = milestone.github?.number
     ? await github(owner, `/repos/${owner}/${repo}/milestones/${milestone.github.number}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     : await github(owner, `/repos/${owner}/${repo}/milestones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  await db.ref(`pm/milestones/${milestone.id}`).update({ github: { number: result.number, url: result.html_url }, syncStatus: 'synced', lastSyncedAt: new Date().toISOString(), lastError: null });
+  await recordTransaction(db.ref(`pm/milestones/${milestone.id}`), current => current
+    ? { ...current, github: { number: result.number, url: result.html_url }, syncStatus: 'synced', lastSyncedAt: new Date().toISOString(), lastError: null }
+    : undefined);
   return result;
 }
 
@@ -344,7 +346,9 @@ async function syncTaskRecord(task) {
   const result = task.github?.number
     ? await github(owner, `/repos/${owner}/${repo}/issues/${task.github.number}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     : await github(owner, `/repos/${owner}/${repo}/issues`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  await db.ref(`pm/tasks/${task.id}`).update({ github: { number: result.number, url: result.html_url }, syncStatus: 'synced', lastSyncedAt: new Date().toISOString(), lastError: null, externalUpdatedAt: result.updated_at });
+  await recordTransaction(db.ref(`pm/tasks/${task.id}`), current => current
+    ? { ...current, github: { number: result.number, url: result.html_url }, syncStatus: 'synced', lastSyncedAt: new Date().toISOString(), lastError: null, externalUpdatedAt: result.updated_at }
+    : undefined);
   return result;
 }
 

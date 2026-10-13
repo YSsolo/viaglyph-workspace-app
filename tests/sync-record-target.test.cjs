@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function loadWorker(data, recoveredMilestone = null, coldTransactions = false) {
+function loadWorker(data, recoveredMilestone = null, coldTransactions = false, behavior = {}) {
   const writes = [];
   const requests = [];
   const bodies = [];
@@ -28,6 +28,7 @@ function loadWorker(data, recoveredMilestone = null, coldTransactions = false) {
     fetch: async (url, options = {}) => {
       requests.push(url);
       if (options.body) bodies.push(JSON.parse(options.body));
+      await behavior.onFetch?.({ url, options, data });
       return { ok: true, json: async () => !options.method
         ? (recoveredMilestone && url.includes('/milestones?') ? [recoveredMilestone] : [])
         : { number: url.endsWith('/milestones/17') ? 17 : 1, html_url: 'https://github.com/YSsolo/repo/issues/1', updated_at: '2026-10-13T00:00:00Z' } };
@@ -144,6 +145,37 @@ test('Task synchronization rejects a foreign-Project Milestone before any extern
   assert.deepEqual(writes, []);
 });
 
+test('Task synchronization does not recreate a Task deleted while its GitHub update is in flight', async () => {
+  const task = { id: 't1', projectId: 'selected', milestoneId: 'm1', title: 'Delete race', status: 'todo', updatedAt: 'r1', github: { number: 7 } };
+  const data = {
+    'pm/projects/selected': { github: { owner: 'YSsolo', repo: 'repo' } },
+    'pm/milestones/m1': { id: 'm1', projectId: 'selected', github: { number: 1 } },
+    'pm/tasks/t1': task
+  };
+  const { worker } = loadWorker(data, null, false, {
+    onFetch: ({ url, options }) => {
+      if (url.endsWith('/issues/7') && options.method === 'PATCH') delete data['pm/tasks/t1'];
+    }
+  });
+  await worker.syncTaskRecord(task);
+  assert.equal(data['pm/tasks/t1'], undefined);
+});
+
+test('Milestone synchronization does not recreate a Milestone deleted while its GitHub update is in flight', async () => {
+  const milestone = { id: 'm1', projectId: 'selected', name: 'Delete race', status: 'open', updatedAt: 'r1', github: { number: 1 } };
+  const data = {
+    'pm/projects/selected': { github: { owner: 'YSsolo', repo: 'repo' } },
+    'pm/milestones/m1': milestone
+  };
+  const { worker } = loadWorker(data, null, false, {
+    onFetch: ({ url, options }) => {
+      if (url.endsWith('/milestones/1') && options.method === 'PATCH') delete data['pm/milestones/m1'];
+    }
+  });
+  await worker.syncMilestoneRecord(milestone);
+  assert.equal(data['pm/milestones/m1'], undefined);
+});
+
 test('an Issue pull targets the selected record even when another Project links the same Issue', async () => {
   const github = { number: 1, url: 'https://github.com/YSsolo/repo/issues/1' };
   const other = { id: 'other-task', projectId: 'other', title: 'Other', updatedAt: 'r1', syncStatus: 'synced', github };
@@ -190,7 +222,10 @@ test('Workspace-only completion criteria never enter a GitHub Milestone payload'
 });
 
 test('marker recovery preserves the existing GitHub Milestone description and does not create a duplicate', async () => {
-  const data = { 'pm/projects/selected': { github: { owner: 'YSsolo', repo: 'repo' } } };
+  const data = {
+    'pm/projects/selected': { github: { owner: 'YSsolo', repo: 'repo' } },
+    'pm/milestones/m1': { id: 'm1', projectId: 'selected', name: 'Milestone', status: 'open' }
+  };
   const { worker, bodies, requests } = loadWorker(data, {
     number: 17, description: 'Human-maintained description\n<!-- viaglyph-milestone:m1 -->'
   });
