@@ -110,15 +110,15 @@
     },
     async persistTask(options) {
       const source = options || {};
-      const id = source.id || document.getElementById('pm-task-id').value || uid();
+      const id = source.id || (!options && document.getElementById('pm-task-id').value) || uid();
       const projectId = source.projectId || document.getElementById('pm-task-project').value;
       const milestoneId = source.milestoneId || document.getElementById('pm-task-milestone').value;
       const title = source.title || document.getElementById('pm-task-title').value.trim();
       const status = source.status || document.getElementById('pm-task-status').value;
       const assignees = source.assignees || Array.from(document.querySelectorAll('#pm-task-assignees .selected')).map(el => el.dataset.member);
       const dueDate = source.dueDate ?? document.getElementById('pm-task-due').value;
-      const priority = source.priority || document.getElementById('pm-task-priority').value;
-      const description = source.description ?? document.getElementById('pm-task-description').value.trim();
+      const priority = source.priority || (options ? 'medium' : document.getElementById('pm-task-priority').value);
+      const description = source.description ?? (options ? '' : document.getElementById('pm-task-description').value.trim());
       if (!projectId || !milestoneId || !title) return toast('タイトル、Project、Milestoneは必須です');
       if (status !== 'backlog' && (!assignees.length || !dueDate)) return toast('Todo以降は担当者と期限が必須です');
       if (!this.hasGitHub(this.project(projectId))) return toast('ProjectにGitHub repositoryを設定してください');

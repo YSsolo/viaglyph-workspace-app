@@ -257,10 +257,12 @@ test('missing Workspace API is classified separately from an authorization failu
 
 test('Canvas task flow selects a PM Project and Milestone before creating a formal Task', async ({ page }) => {
   await page.evaluate(() => {
+    canvasCurrentId = 'meeting-001';
+    canvasBlocks = [{ key: 'block-001', type: 'text', text: '', order: 0 }];
     window.__canvasTask = null;
     window.PM.saveTask = payload => {
       window.__canvasTask = payload;
-      return new Promise(() => {});
+      return Promise.resolve(null);
     };
     window.showTaskModal(0);
   });
@@ -276,6 +278,69 @@ test('Canvas task flow selects a PM Project and Milestone before creating a form
     title: '会議からのTask', projectId: 'p1', milestoneId: 'm1',
     assignees: ['山口'], dueDate: '2026-09-25', status: 'todo'
   });
+});
+
+test('Canvas saves one formal Task and durably links its source block', async ({ page }) => {
+  await page.evaluate(() => {
+    canvasCurrentId = 'meeting-001';
+    canvasBlocks = [{ key: 'block-001', type: 'text', text: '', order: 0 }];
+    window.__canvasWrites = [];
+    window.__canvasAlerts = [];
+    window.alert = message => window.__canvasAlerts.push(message);
+    window.firebaseDb = { ref: path => ({
+      set: value => {
+        window.__canvasWrites.push({ path, value, method: 'set' });
+        return new Promise(resolve => { window.__finishCanvasTaskSave = resolve; });
+      },
+      update: async value => window.__canvasWrites.push({ path, value, method: 'update' })
+    }) };
+    window.PM.syncTask = async () => {};
+    // A stale value in the separate Task form must not be used by Canvas.
+    document.getElementById('pm-task-id').value = 't1';
+    window.showTaskModal(0);
+  });
+  await page.fill('#c-task-title', '会議の正式アクション');
+  await page.evaluate(() => {
+    document.querySelector('#canvas-task-modal button.btn-submit').click();
+    document.querySelector('#canvas-task-modal button.btn-submit').click();
+  });
+  expect(await page.evaluate(() => window.__canvasWrites.filter(w => w.path.startsWith('pm/tasks/')).length)).toBe(1);
+  await page.evaluate(() => window.__finishCanvasTaskSave());
+  await expect.poll(() => page.evaluate(() => window.__canvasWrites.some(w => w.path === 'canvases/meeting-001/blocks/block-001'))).toBe(true);
+  const result = await page.evaluate(() => ({ writes: window.__canvasWrites, alerts: window.__canvasAlerts }));
+  const task = result.writes.find(w => w.path.startsWith('pm/tasks/'));
+  expect(task.path).not.toBe('pm/tasks/t1');
+  expect(task.value).toMatchObject({ sourceMeetingId: 'meeting-001', status: 'backlog', title: '会議の正式アクション' });
+  expect(result.writes.find(w => w.path === 'canvases/meeting-001/blocks/block-001').value).toMatchObject({ type: 'goal-task', meta: { taskId: task.value.id, pm: true } });
+  expect(result.alerts).toEqual([]);
+});
+
+test('Canvas link retry keeps the Task ID after a block write fails', async ({ page }) => {
+  await page.evaluate(() => {
+    canvasCurrentId = 'meeting-001';
+    canvasBlocks = [{ key: 'block-001', type: 'text', text: '', order: 0 }];
+    window.__canvasTaskPaths = [];
+    window.__canvasBlockAttempts = 0;
+    window.firebaseDb = { ref: path => ({
+      set: async () => window.__canvasTaskPaths.push(path),
+      update: async () => {
+        window.__canvasBlockAttempts++;
+        if (window.__canvasBlockAttempts === 1) throw new Error('block acknowledgement lost');
+      }
+    }) };
+    window.PM.syncTask = async () => {};
+    window.showTaskModal(0);
+  });
+  await page.fill('#c-task-title', '参照の保存を再試行する');
+  await page.locator('#canvas-task-modal button.btn-submit').click();
+  await expect(page.locator('#toast')).toContainText('Taskは保持される');
+  await expect(page.locator('#canvas-task-modal button.btn-submit')).toBeEnabled();
+  await page.locator('#canvas-task-modal button.btn-submit').click();
+  await expect(page.locator('#canvas-task-modal')).not.toHaveClass(/open/);
+  const paths = await page.evaluate(() => window.__canvasTaskPaths);
+  expect(paths).toHaveLength(2);
+  expect(paths[0]).toBe(paths[1]);
+  expect(await page.evaluate(() => window.__canvasBlockAttempts)).toBe(2);
 });
 
 test('clicking /task in the Canvas slash menu opens the formal Task modal', async ({ page }) => {
